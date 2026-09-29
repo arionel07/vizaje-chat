@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia'
 import jwt from 'jsonwebtoken'
 import { verifyToken } from '../auth/guard'
+import { allowVisitorMessage } from '../chat/rate-limit'
 import { addMessage, conversationExists } from '../chat/service'
 import { verifySessionToken } from '../widget/service'
 
@@ -72,6 +73,10 @@ export const wsRoutes = new Elysia().ws('/ws', {
 		}
 
 		if (store.type === 'visitor') {
+			if (!allowVisitorMessage(store.conversationId)) {
+				sendError(ws, 'Too many messages')
+				return
+			}
 			const msg = await addMessage(store.conversationId, 'visitor', text)
 			const payload = JSON.stringify(msg)
 			ws.publish(`conversation:${store.conversationId}`, payload)
