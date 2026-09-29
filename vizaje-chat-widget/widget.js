@@ -7,6 +7,8 @@
  *   data-theme  — auto (по умолчанию, системная тема посетителя) | light | dark
  *   data-title  — заголовок панели (по умолчанию «Поддержка Vizaje-Nica»)
  *   data-agent  — подпись сотрудника под сообщениями (по умолчанию «Поддержка»)
+ *   data-lang   — язык диктовки (по умолчанию ru-RU); кнопка микрофона есть только
+ *                 в браузерах с распознаванием речи (Chrome, Edge, Safari)
  */
 ;(function () {
 	if (window.__vizajeChatLoaded) return
@@ -20,6 +22,8 @@
 	const TITLE = cfg.title || 'Поддержка Vizaje-Nica'
 	const AGENT = cfg.agent || 'Поддержка'
 	const THEME = ['light', 'dark'].includes(cfg.theme) ? cfg.theme : 'auto'
+	const LANG = cfg.lang || 'ru-RU'
+	const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition
 
 	const PAGE_SIZE = 50
 	const ACK_TIMEOUT_MS = 10000 // подтверждение sent не пришло — перестаём отслеживать
@@ -51,6 +55,11 @@
 		'<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/>',
 		22
 	)
+	const ICON_MIC = svg(
+		'<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>',
+		22
+	)
+	const ICON_STOP = svg('<rect width="12" height="12" x="6" y="6" rx="2"/>', 22)
 	const ICON_REPLY = svg('<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>', 16)
 	const ICON_AVATAR = svg(
 		'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
@@ -167,6 +176,15 @@
   .emoji:hover { background: var(--surface); }
   .emoji-empty { grid-column: 1 / -1; padding: 24px 8px; text-align: center; font-size: 13px; color: var(--muted); }
   .root.emoji-open .composer { padding-bottom: 12px; }
+  .mic-btn { flex: none; width: 42px; height: 42px; border-radius: 50%; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+  .mic-btn:hover { background: var(--surface); color: var(--fg); }
+  .mic-btn .ic-stop { display: none; }
+  .mic-btn.listening { background: #ef4444; color: #fff; animation: pulse 1.4s ease-out infinite; }
+  .mic-btn.listening .ic-mic { display: none; }
+  .mic-btn.listening .ic-stop { display: block; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,.5); } 100% { box-shadow: 0 0 0 12px rgba(239,68,68,0); } }
+  .note { padding: 6px 16px; font-size: 12px; text-align: center; color: var(--muted); background: var(--surface); }
+  .note.error { color: var(--danger); }
   .reply-bar { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; border-top: 1px solid var(--border); background: var(--surface); }
   .reply-bar-text { flex: 1; min-width: 0; border-left: 3px solid var(--ring); padding-left: 8px; }
   .reply-author { font-size: 12px; font-weight: 600; }
@@ -185,7 +203,7 @@
   .send:disabled { opacity: .35; cursor: default; }
 
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
-  @media (prefers-reduced-motion: reduce) { .toast, .root.open .panel, .typing .dot, .row.flash .bubble { animation: none; } .launcher { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .toast, .root.open .panel, .typing .dot, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } }
 
   @media (hover: none) and (pointer: coarse) {
     .reply-btn { display: none; }
@@ -216,6 +234,7 @@
     </header>
     <div class="banner" role="status" hidden>Нет соединения. Переподключаемся…</div>
     <div class="messages" role="log" aria-live="polite"></div>
+    <div class="note" role="status" hidden></div>
     <div class="reply-bar" hidden>
       <div class="reply-bar-text"><div class="reply-author"></div><div class="reply-snippet"></div></div>
       <button class="icon-btn reply-cancel" type="button" aria-label="Отменить ответ">${ICON_CLOSE}</button>
@@ -223,6 +242,7 @@
     <form class="composer">
       <button class="emoji-btn" type="button" aria-label="Эмодзи" aria-expanded="false" aria-controls="emoji-panel">${ICON_SMILE}</button>
       <textarea class="input" rows="1" placeholder="Задать вопрос…" aria-label="Сообщение"></textarea>
+      <button class="mic-btn" type="button" aria-label="Надиктовать сообщение" aria-pressed="false" title="Голосовой ввод: речь распознаёт ваш браузер" hidden><span class="ic-mic">${ICON_MIC}</span><span class="ic-stop">${ICON_STOP}</span></button>
       <button class="send" type="submit" aria-label="Отправить" disabled>${ICON_SEND}</button>
     </form>
     <div class="emoji-panel" id="emoji-panel" hidden>
@@ -248,6 +268,8 @@
 	const form = $('.composer')
 	const replyBar = $('.reply-bar')
 	const emojiBtn = $('.emoji-btn')
+	const micBtn = $('.mic-btn')
+	const note = $('.note')
 	const emojiPanel = $('.emoji-panel')
 	const emojiTabs = $('.emoji-tabs')
 	const emojiGrid = $('.emoji-grid')
@@ -708,6 +730,7 @@
 		await start()
 	}
 	function closeChat() {
+		abortDictation()
 		setOpen(false)
 		launcher.focus()
 	}
@@ -728,6 +751,7 @@
 			return
 		}
 		const clientId = `${Date.now().toString(36)}-${++sendSeq}`
+		abortDictation()
 		const replyToId = replyTarget?.id
 		trackPending(renderMessage({ sender: 'visitor', text, replyTo: replyTarget }), clientId)
 		ws.send(JSON.stringify({ text, clientId, ...(replyToId ? { replyToId } : {}) }))
@@ -735,6 +759,105 @@
 		input.value = ''
 		autosize()
 	}
+
+	// --- диктовка (речь → текст, распознаёт браузер) ----------------------------
+	const DICTATION_ERRORS = {
+		'not-allowed': 'Нет доступа к микрофону. Разрешите его в настройках браузера.',
+		'service-not-allowed': 'Нет доступа к микрофону. Разрешите его в настройках браузера.',
+		'audio-capture': 'Микрофон не найден.',
+		network: 'Нет связи с сервисом распознавания речи.',
+		'no-speech': 'Речь не распознана. Попробуйте ещё раз.',
+		'language-not-supported': 'Этот язык не поддерживается браузером.'
+	}
+	const NOTICE_KEY = 'widget_dictation_notice'
+	const PLACEHOLDER = input.placeholder
+	let rec = null
+	let noteTimer
+	if (SpeechRec) micBtn.hidden = false
+
+	function setNote(text, { error = false, ms = 6000 } = {}) {
+		clearTimeout(noteTimer)
+		note.textContent = text
+		note.classList.toggle('error', error)
+		note.hidden = !text
+		if (text) noteTimer = setTimeout(() => (note.hidden = true), ms)
+	}
+	function setListening(on) {
+		micBtn.classList.toggle('listening', on)
+		micBtn.setAttribute('aria-pressed', String(on))
+		micBtn.setAttribute('aria-label', on ? 'Остановить диктовку' : 'Надиктовать сообщение')
+		input.placeholder = on ? 'Говорите…' : PLACEHOLDER
+	}
+	function startDictation() {
+		if (!SpeechRec || rec) return
+		// первое использование: честно говорим, куда уходит звук
+		let seen = true
+		try {
+			seen = !!localStorage.getItem(NOTICE_KEY)
+			localStorage.setItem(NOTICE_KEY, '1')
+		} catch {}
+		if (!seen) {
+			setNote('Речь распознаёт ваш браузер: аудио передаётся на серверы Google или Apple.', { ms: 8000 })
+		}
+		// текст до и после курсора сохраняем, надиктованное вставляем между ними
+		const from = input.selectionStart ?? input.value.length
+		const to = input.selectionEnd ?? from
+		let prefix = input.value.slice(0, from)
+		let suffix = input.value.slice(to)
+		if (prefix && !/\s$/.test(prefix)) prefix += ' '
+		if (suffix && !/^\s/.test(suffix)) suffix = ' ' + suffix
+
+		const r = new SpeechRec()
+		r.lang = LANG
+		r.continuous = true
+		r.interimResults = true
+		r.maxAlternatives = 1
+		r.onresult = e => {
+			if (rec !== r) return
+			// собираем текст из всех результатов заново, а не дописываем кусками:
+			// так не бывает дублей (известная проблема на части Android-устройств)
+			let text = ''
+			for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript
+			text = text.replace(/^\s+/, '')
+			input.value = prefix + text + suffix
+			const pos = (prefix + text).length
+			input.setSelectionRange(pos, pos)
+			input.dispatchEvent(new Event('input')) // размер поля, кнопка отправки, «печатаю»
+		}
+		r.onerror = e => {
+			if (rec !== r || e.error === 'aborted') return
+			setNote(DICTATION_ERRORS[e.error] || 'Не удалось распознать речь.', { error: true })
+		}
+		r.onend = () => {
+			if (rec !== r) return
+			rec = null
+			setListening(false)
+		}
+		try {
+			rec = r
+			r.start()
+			setListening(true)
+		} catch {
+			rec = null
+			setListening(false)
+			setNote('Не удалось включить голосовой ввод.', { error: true })
+		}
+	}
+	// остановить и дождаться последних слов (кнопка «стоп»)
+	function stopDictation() {
+		rec?.stop()
+	}
+	// прервать сразу, поздние результаты игнорируем (отправка, закрытие чата)
+	function abortDictation() {
+		const r = rec
+		if (!r) return
+		rec = null
+		setListening(false)
+		try {
+			r.abort()
+		} catch {}
+	}
+	micBtn.addEventListener('click', () => (rec ? stopDictation() : startDictation()))
 
 	// --- эмодзи ---------------------------------------------------------------
 	let emojiCategory = 'smileys'

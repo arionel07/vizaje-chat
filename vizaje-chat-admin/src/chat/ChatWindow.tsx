@@ -2,10 +2,12 @@ import {
 	ArrowLeft,
 	Check,
 	Lock,
+	Mic,
 	Reply,
 	RotateCcw,
 	Send,
 	Smile,
+	Square,
 	User,
 	X
 } from 'lucide-react'
@@ -23,6 +25,7 @@ import { connectAdminWs, type AdminWs } from '../lib/ws'
 import { EmojiPicker } from './EmojiPicker'
 import { pushRecentEmoji } from './emoji-data'
 import { TypingDots } from './TypingDots'
+import { useDictation } from './useDictation'
 
 type ReplyTo = { id: number; sender: string; text: string }
 
@@ -172,6 +175,21 @@ export function ChatWindow({
 		// на телефоне не поднимаем клавиатуру заново
 		if (window.matchMedia('(hover: hover)').matches) el.focus()
 	}
+
+	// сообщаем посетителю «печатает» (не чаще раза в TYPING_EMIT_MS)
+	function notifyTyping(value: string) {
+		const now = Date.now()
+		if (value.trim() && now - lastTypingSentRef.current > TYPING_EMIT_MS) {
+			lastTypingSentRef.current = now
+			wsRef.current?.send(JSON.stringify({ type: 'typing', conversationId }))
+		}
+	}
+
+	const dictation = useDictation({
+		inputRef,
+		setValue: setInput,
+		onText: notifyTyping
+	})
 
 	function startReply(m: Message) {
 		if (m.pending || m.failed || m.sender === 'system') return // у сообщения нет серверного id
@@ -332,6 +350,7 @@ export function ChatWindow({
 		if (!text || !wsRef.current) return
 		// нет соединения — не теряем текст и не рисуем «отправленное» сообщение
 		const clientId = `${Date.now().toString(36)}-${++sendSeqRef.current}`
+		dictation.abort()
 		const replyToId = replyTarget?.id
 		if (
 			!wsRef.current.send(
@@ -532,6 +551,19 @@ export function ChatWindow({
 				</div>
 			)}
 
+			{dictation.note && (
+				<div
+					role="status"
+					className={`border-t border-zinc-200 bg-zinc-50 px-4 py-1.5 text-center text-xs dark:border-zinc-800 dark:bg-zinc-800/50 ${
+						dictation.note.error
+							? 'text-red-600 dark:text-red-400'
+							: 'text-zinc-500 dark:text-zinc-400'
+					}`}
+				>
+					{dictation.note.text}
+				</div>
+			)}
+
 			{replyTarget && (
 				<div className="flex items-center gap-2 border-t border-zinc-200 bg-zinc-50 py-2 pl-4 pr-2 dark:border-zinc-800 dark:bg-zinc-800/50">
 					<div className="min-w-0 flex-1 border-l-[3px] border-zinc-900 pl-2 dark:border-zinc-100">
@@ -584,18 +616,33 @@ export function ChatWindow({
 					}}
 					onChange={e => {
 						setInput(e.target.value)
-						// сообщаем посетителю «печатает» (не чаще раза в TYPING_EMIT_MS)
-						const now = Date.now()
-						if (e.target.value.trim() && now - lastTypingSentRef.current > TYPING_EMIT_MS) {
-							lastTypingSentRef.current = now
-							wsRef.current?.send(JSON.stringify({ type: 'typing', conversationId }))
-						}
+						notifyTyping(e.target.value)
 					}}
-					placeholder="Ответ…"
+					placeholder={dictation.listening ? 'Говорите…' : 'Ответ…'}
 					aria-label="Сообщение"
 					autoComplete="off"
 					className="box-border h-11 min-w-0 flex-1 rounded-xl border border-zinc-300 bg-white px-4 text-base text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/15 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-300 dark:focus:ring-zinc-300/20"
 				/>
+				{dictation.supported && (
+					<button
+						type="button"
+						onClick={dictation.toggle}
+						aria-label={dictation.listening ? 'Остановить диктовку' : 'Надиктовать сообщение'}
+						aria-pressed={dictation.listening}
+						title="Голосовой ввод: речь распознаёт ваш браузер"
+						className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:focus-visible:ring-zinc-300/30 ${
+							dictation.listening
+								? 'bg-red-500 text-white motion-safe:animate-pulse'
+								: 'bg-transparent text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100'
+						}`}
+					>
+						{dictation.listening ? (
+							<Square aria-hidden="true" className="h-4 w-4 fill-current" />
+						) : (
+							<Mic aria-hidden="true" className="h-5 w-5" />
+						)}
+					</button>
+				)}
 				<button
 					type="submit"
 					disabled={!input.trim()}
