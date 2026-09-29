@@ -103,6 +103,7 @@
 		}
 		ws.onmessage = event => {
 			const msg = JSON.parse(event.data)
+			if (!msg.sender) return // служебные сообщения (например, ошибки)
 			renderMessage(msg.sender, msg.text)
 		}
 		ws.onerror = e => console.error('widget ws error', e)

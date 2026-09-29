@@ -14,6 +14,14 @@ export async function addMessage(
 	return message
 }
 
+export async function conversationExists(conversationId: number) {
+	const [row] = await db
+		.select({ id: conversations.id })
+		.from(conversations)
+		.where(eq(conversations.id, conversationId))
+	return !!row
+}
+
 export async function getMessages(conversationId: number) {
 	return db
 		.select()

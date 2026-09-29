@@ -1,7 +1,7 @@
 import { Elysia } from 'elysia'
 import jwt from 'jsonwebtoken'
 import { verifyToken } from '../auth/guard'
-import { addMessage } from '../chat/service'
+import { addMessage, conversationExists } from '../chat/service'
 import { verifySessionToken } from '../widget/service'
 
 type ConnStore =
@@ -9,6 +9,22 @@ type ConnStore =
 	| { type: 'admin'; email: string }
 
 const connections = new Map<string, ConnStore>()
+
+const MAX_TEXT_LENGTH = 4000
+
+// Elysia парсит JSON-строку в объект сам; невалидный JSON приходит строкой
+function parseText(body: unknown): string | null {
+	if (typeof body !== 'object' || body === null) return null
+	const text = (body as { text?: unknown }).text
+	if (typeof text !== 'string') return null
+	const trimmed = text.trim()
+	if (!trimmed || trimmed.length > MAX_TEXT_LENGTH) return null
+	return trimmed
+}
+
+function sendError(ws: { send: (data: string) => unknown }, error: string) {
+	ws.send(JSON.stringify({ type: 'error', error }))
+}
 
 export const wsRoutes = new Elysia().ws('/ws', {
 	open(ws) {
@@ -49,8 +65,13 @@ export const wsRoutes = new Elysia().ws('/ws', {
 		const store = connections.get(ws.id)
 		if (!store) return
 
+		const text = parseText(body)
+		if (!text) {
+			sendError(ws, 'Invalid message')
+			return
+		}
+
 		if (store.type === 'visitor') {
-			const text = (body as { text: string }).text
 			const msg = await addMessage(store.conversationId, 'visitor', text)
 			const payload = JSON.stringify(msg)
 			ws.publish(`conversation:${store.conversationId}`, payload)
@@ -58,9 +79,15 @@ export const wsRoutes = new Elysia().ws('/ws', {
 		}
 
 		if (store.type === 'admin') {
-			const { conversationId, text } = body as {
-				conversationId: number
-				text: string
+			const conversationId = (body as { conversationId?: unknown })
+				.conversationId
+			if (
+				typeof conversationId !== 'number' ||
+				!Number.isInteger(conversationId) ||
+				!(await conversationExists(conversationId))
+			) {
+				sendError(ws, 'Conversation not found')
+				return
 			}
 			const msg = await addMessage(conversationId, 'admin', text)
 			const payload = JSON.stringify(msg)
