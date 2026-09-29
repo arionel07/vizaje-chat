@@ -5,6 +5,7 @@ import {
 	Reply,
 	RotateCcw,
 	Send,
+	Smile,
 	User,
 	X
 } from 'lucide-react'
@@ -19,6 +20,8 @@ import {
 } from '../lib/api'
 import { formatTime } from '../lib/format'
 import { connectAdminWs, type AdminWs } from '../lib/ws'
+import { EmojiPicker } from './EmojiPicker'
+import { pushRecentEmoji } from './emoji-data'
 import { TypingDots } from './TypingDots'
 
 type ReplyTo = { id: number; sender: string; text: string }
@@ -67,6 +70,7 @@ export function ChatWindow({
 	const [toggling, setToggling] = useState(false)
 	const [visitorTyping, setVisitorTyping] = useState(false)
 	const [replyTarget, setReplyTarget] = useState<ReplyTo | null>(null)
+	const [emojiOpen, setEmojiOpen] = useState(false)
 	const [flashId, setFlashId] = useState<number | null>(null)
 	const flashTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const pressRef = useRef<{ timer?: ReturnType<typeof setTimeout>; x: number; y: number }>({
@@ -156,6 +160,17 @@ export function ChatWindow({
 		} finally {
 			setLoadingMore(false)
 		}
+	}
+
+	// вставка эмодзи в позицию курсора (выделение сохраняется, даже если поле потеряло фокус)
+	function insertEmoji(emoji: string) {
+		const el = inputRef.current
+		if (!el) return
+		el.setRangeText(emoji, el.selectionStart ?? el.value.length, el.selectionEnd ?? el.value.length, 'end')
+		setInput(el.value)
+		pushRecentEmoji(emoji)
+		// на телефоне не поднимаем клавиатуру заново
+		if (window.matchMedia('(hover: hover)').matches) el.focus()
 	}
 
 	function startReply(m: Message) {
@@ -546,11 +561,26 @@ export function ChatWindow({
 				}}
 				className="flex items-center gap-2 border-t border-zinc-200 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-zinc-800"
 			>
+				<button
+					type="button"
+					onClick={() => setEmojiOpen(o => !o)}
+					aria-label="Эмодзи"
+					aria-expanded={emojiOpen}
+					aria-controls="emoji-panel"
+					className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-300/30 ${
+						emojiOpen ? 'bg-zinc-100 dark:bg-zinc-800' : 'bg-transparent'
+					}`}
+				>
+					<Smile aria-hidden="true" className="h-5 w-5" />
+				</button>
 				<input
 					ref={inputRef}
 					value={input}
 					onKeyDown={e => {
-						if (e.key === 'Escape' && replyTarget) setReplyTarget(null)
+						// Escape по очереди: панель эмодзи, потом ответ
+						if (e.key !== 'Escape') return
+						if (emojiOpen) setEmojiOpen(false)
+						else if (replyTarget) setReplyTarget(null)
 					}}
 					onChange={e => {
 						setInput(e.target.value)
@@ -575,6 +605,7 @@ export function ChatWindow({
 					<Send aria-hidden="true" className="h-5 w-5" />
 				</button>
 			</form>
+			{emojiOpen && <EmojiPicker onPick={insertEmoji} />}
 		</div>
 	)
 }

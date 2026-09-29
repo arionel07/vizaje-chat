@@ -27,6 +27,16 @@
 	const TYPING_SHOW_MS = 5000 // «печатает» гаснет, если событий больше нет
 	const TOAST_MS = 15000
 	const MAX_INPUT_HEIGHT = 120
+	// Набор эмодзи (тот же, что в админке: vizaje-chat-admin/src/chat/emoji-data.ts)
+	const EMOJI_CATEGORIES = [
+		{ id: 'smileys', label: 'Смайлы', icon: '😀', emojis: '😀 😃 😄 😁 😆 😅 😂 🤣 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😋 😜 🤪 😎 🤓 🥳 😏 😌 😔 😢 😭 😤 😡 🥺 😱 😳 🤔 🤗 🙄 😴 🤯 😬'.split(' ') },
+		{ id: 'gestures', label: 'Жесты', icon: '👍', emojis: '👍 👎 👌 ✌️ 🤞 🤝 👏 🙌 🙏 💪 👋 🤚 ✋ 🫡 🤙 👀 ☝️ 👇 👉 👈 🤷 🙋 🤦'.split(' ') },
+		{ id: 'hearts', label: 'Сердца', icon: '❤️', emojis: '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 ❣️ 💕 💖 💗 💯 ✨ 🔥 ⭐ 🎉 🎊 🎁'.split(' ') },
+		{ id: 'objects', label: 'Предметы', icon: '📦', emojis: '✅ ❌ ❗ ❓ ⚠️ 💬 📦 🚚 📞 📧 🕐 💳 💰 🛒 🎯 🔒 🔑 📌 ✏️ 📎 🎧 📷 💡'.split(' ') },
+		{ id: 'nature', label: 'Еда и природа', icon: '☕', emojis: '☕ 🍕 🍔 🍰 🍎 🍓 🌞 🌙 🌈 🌸 🌹 🐶 🐱 🐻 🚗 ✈️ 🏠'.split(' ') }
+	]
+	const RECENT_KEY = 'widget_emoji_recent'
+	const RECENT_MAX = 16
 	const LONG_PRESS_MS = 450 // долгое нажатие на сообщение (телефон) — ответить
 	const QUOTE_LENGTH = 200
 
@@ -37,6 +47,10 @@
 	const ICON_CHEVRON = svg('<path d="m6 9 6 6 6-6"/>', 26)
 	const ICON_CLOSE = svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', 20)
 	const ICON_SEND = svg('<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>', 20)
+	const ICON_SMILE = svg(
+		'<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/>',
+		22
+	)
 	const ICON_REPLY = svg('<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>', 16)
 	const ICON_AVATAR = svg(
 		'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
@@ -142,6 +156,17 @@
   .quote-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; opacity: .85; }
   .row.flash .bubble { animation: flash 1.3s ease-out; }
   @keyframes flash { 0%, 50% { box-shadow: 0 0 0 3px var(--ring); } 100% { box-shadow: 0 0 0 3px transparent; } }
+  .emoji-btn { flex: none; width: 42px; height: 42px; border-radius: 50%; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+  .emoji-btn:hover, .emoji-btn[aria-expanded="true"] { background: var(--surface); color: var(--fg); }
+  .emoji-panel { display: flex; flex-direction: column; height: 240px; border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
+  .emoji-tabs { display: flex; gap: 2px; padding: 6px 8px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .emoji-tab { flex: none; width: 38px; height: 32px; border-radius: 8px; font-size: 18px; }
+  .emoji-tab[aria-selected="true"] { background: var(--surface); }
+  .emoji-grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); align-content: start; padding: 8px; gap: 2px; }
+  .emoji { height: 38px; border-radius: 8px; font-size: 24px; line-height: 1; }
+  .emoji:hover { background: var(--surface); }
+  .emoji-empty { grid-column: 1 / -1; padding: 24px 8px; text-align: center; font-size: 13px; color: var(--muted); }
+  .root.emoji-open .composer { padding-bottom: 12px; }
   .reply-bar { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; border-top: 1px solid var(--border); background: var(--surface); }
   .reply-bar-text { flex: 1; min-width: 0; border-left: 3px solid var(--ring); padding-left: 8px; }
   .reply-author { font-size: 12px; font-weight: 600; }
@@ -196,9 +221,14 @@
       <button class="icon-btn reply-cancel" type="button" aria-label="Отменить ответ">${ICON_CLOSE}</button>
     </div>
     <form class="composer">
+      <button class="emoji-btn" type="button" aria-label="Эмодзи" aria-expanded="false" aria-controls="emoji-panel">${ICON_SMILE}</button>
       <textarea class="input" rows="1" placeholder="Задать вопрос…" aria-label="Сообщение"></textarea>
       <button class="send" type="submit" aria-label="Отправить" disabled>${ICON_SEND}</button>
     </form>
+    <div class="emoji-panel" id="emoji-panel" hidden>
+      <div class="emoji-tabs" role="tablist" aria-label="Категории эмодзи"></div>
+      <div class="emoji-grid" role="tabpanel"></div>
+    </div>
   </section>
   <button class="launcher" type="button" aria-label="Открыть чат" aria-expanded="false">
     <span class="ic-chat">${ICON_BUBBLE}</span><span class="ic-close">${ICON_CHEVRON}</span>
@@ -217,6 +247,10 @@
 	const messagesEl = $('.messages')
 	const form = $('.composer')
 	const replyBar = $('.reply-bar')
+	const emojiBtn = $('.emoji-btn')
+	const emojiPanel = $('.emoji-panel')
+	const emojiTabs = $('.emoji-tabs')
+	const emojiGrid = $('.emoji-grid')
 	const input = $('.input')
 	const sendBtn = $('.send')
 	$('.title').textContent = TITLE
@@ -702,6 +736,77 @@
 		autosize()
 	}
 
+	// --- эмодзи ---------------------------------------------------------------
+	let emojiCategory = 'smileys'
+	const readRecent = () => {
+		try {
+			const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')
+			return Array.isArray(list) ? list.filter(x => typeof x === 'string').slice(0, RECENT_MAX) : []
+		} catch {
+			return []
+		}
+	}
+	function pushRecent(emoji) {
+		const next = [emoji, ...readRecent().filter(e => e !== emoji)].slice(0, RECENT_MAX)
+		try {
+			localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+		} catch {}
+	}
+	function renderEmoji() {
+		const categories = [
+			{ id: 'recent', label: 'Недавние', icon: '🕘', emojis: readRecent() },
+			...EMOJI_CATEGORIES
+		]
+		if (emojiCategory === 'recent' && !categories[0].emojis.length) emojiCategory = 'smileys'
+		emojiTabs.textContent = ''
+		for (const c of categories) {
+			if (c.id === 'recent' && !c.emojis.length) continue
+			const tab = document.createElement('button')
+			tab.type = 'button'
+			tab.className = 'emoji-tab'
+			tab.setAttribute('role', 'tab')
+			tab.setAttribute('aria-label', c.label)
+			tab.setAttribute('aria-selected', String(c.id === emojiCategory))
+			tab.textContent = c.icon
+			tab.addEventListener('click', () => {
+				emojiCategory = c.id
+				renderEmoji()
+			})
+			emojiTabs.appendChild(tab)
+		}
+		const current = categories.find(c => c.id === emojiCategory)
+		emojiGrid.textContent = ''
+		for (const emoji of current.emojis) {
+			const b = document.createElement('button')
+			b.type = 'button'
+			b.className = 'emoji'
+			b.textContent = emoji
+			b.setAttribute('aria-label', emoji)
+			emojiGrid.appendChild(b)
+		}
+	}
+	function setEmojiOpen(open) {
+		emojiPanel.hidden = !open
+		rootEl.classList.toggle('emoji-open', open)
+		emojiBtn.setAttribute('aria-expanded', String(open))
+		if (open) renderEmoji()
+	}
+	function insertEmoji(emoji) {
+		// вставка в позицию курсора (выделение сохраняется, даже если поле потеряло фокус)
+		input.setRangeText(emoji, input.selectionStart, input.selectionEnd, 'end')
+		input.dispatchEvent(new Event('input')) // размер поля, кнопка отправки, «печатаю»
+		pushRecent(emoji)
+		// на телефоне не поднимаем клавиатуру заново
+		if (window.matchMedia('(hover: hover)').matches) input.focus()
+	}
+	emojiBtn.addEventListener('click', () => setEmojiOpen(emojiPanel.hidden))
+	// кнопки не забирают фокус у поля ввода
+	emojiPanel.addEventListener('pointerdown', e => e.preventDefault())
+	emojiGrid.addEventListener('click', e => {
+		const b = e.target.closest('.emoji')
+		if (b) insertEmoji(b.textContent)
+	})
+
 	form.addEventListener('submit', e => {
 		e.preventDefault()
 		sendMessage()
@@ -731,8 +836,11 @@
 	})
 	root.addEventListener('keydown', e => {
 		if (e.key !== 'Escape') return
-		// Escape сначала отменяет ответ, потом сворачивает чат
-		if (replyTarget) cancelReply()
+		// Escape по очереди: панель эмодзи, ответ, чат
+		if (!emojiPanel.hidden) {
+			setEmojiOpen(false)
+			emojiBtn.focus()
+		} else if (replyTarget) cancelReply()
 		else if (isOpen) closeChat()
 	})
 	$('.reply-cancel').addEventListener('click', () => {
