@@ -7,7 +7,13 @@ export function verifyToken(authHeader?: string) {
 
 	const token = authHeader.slice(7)
 	try {
-		return jwt.verify(token, JWT_SECRET) as { sub: number; email: string }
+		const payload = jwt.verify(token, JWT_SECRET) as {
+			type?: string
+			sub: number
+			email: string
+		}
+		if (payload.type !== 'admin') return null
+		return payload
 	} catch {
 		return null
 	}

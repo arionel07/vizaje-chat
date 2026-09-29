@@ -28,10 +28,13 @@ export function verifySessionToken(authHeader?: string) {
 	if (!authHeader?.startsWith('Bearer ')) return null
 	const token = authHeader.slice(7)
 	try {
-		return jwt.verify(token, JWT_SECRET) as {
+		const payload = jwt.verify(token, JWT_SECRET) as {
+			type?: string
 			sessionId: string
 			conversationId: number
 		}
+		if (payload.type !== 'visitor') return null
+		return payload
 	} catch {
 		return null
 	}
