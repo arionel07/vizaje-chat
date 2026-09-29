@@ -10,33 +10,40 @@ Standalone support-chat сервис для vizaje-nica.com (Jivo/Intercom-style
 - **Auth:** JWT (отдельно для admin-операторов и анонимных widget-сессий)
 - **Realtime:** WebSocket (нативный, через Elysia `.ws()`)
 
-## Структура
+## Структура монорепо
 
-src/
-auth/ — admin login, JWT создание/проверка
-chat/ — сообщения, беседы, смена статуса
-widget/ — анонимные widget-сессии
-db/ — Drizzle schema + client
-routes/ — HTTP/WS роуты, сгруппированные по домену
-scripts/ — разовые скрипты (create-admin, test-realtime)
-index.ts — сборка приложения
-
+```
+vizaje-chat-api/      — API + WebSocket (Bun, Elysia, Drizzle)
+  src/
+    auth/             — admin login, JWT создание/проверка
+    chat/             — сообщения, беседы, статус, rate-limit, публикация в WS
+    widget/           — анонимные widget-сессии
+    db/               — Drizzle schema + client
+    routes/           — HTTP/WS роуты по доменам
+    scripts/          — разовые скрипты (create-admin, test-realtime)
+    config.ts         — переменные окружения
+    index.ts          — сборка приложения
+vizaje-chat-admin/    — веб-админка операторов (Vite + React)
+vizaje-chat-widget/   — виджет для сайта (widget.js) и тестовая страница
+```
 
 ## Локальный запуск
 
+Нужны [Bun](https://bun.com) и Docker (для Postgres).
+
+### 1. API (порт 3001)
+
 ```bash
+cd vizaje-chat-api
 bun install
 
 # Postgres в докере
 docker run --name vizaje-chat-db -e POSTGRES_PASSWORD=dev -p 5433:5432 -d postgres:16
 
-# .env
-DATABASE_URL=postgres://postgres:dev@localhost:5433/postgres
-JWT_SECRET=любая-длинная-строка
-# origins с CORS через запятую (по умолчанию localhost:5173 и localhost:8080)
-ALLOWED_ORIGINS=http://localhost:5173,http://localhost:8080
+# переменные окружения
+cp .env.example .env    # затем впишите JWT_SECRET
 
-# применить схему
+# применить схему (таблицы и индексы)
 bunx drizzle-kit push
 
 # создать первого админа
@@ -46,26 +53,56 @@ bun run src/scripts/create-admin.ts admin@example.com пароль
 bun run src/index.ts
 ```
 
-Сервер поднимется на `localhost:3001`.
+Проверка: `curl localhost:3001/health` возвращает `{"status":"ok"}`.
 
-## Виджет
+### 2. Админка (порт 5173)
+
+```bash
+cd vizaje-chat-admin
+bun install
+cp .env.example .env    # необязательно: по умолчанию API на http://localhost:3001
+bun run dev
+```
+
+### 3. Виджет (порт 8080)
 
 ```bash
 cd vizaje-chat-widget
-bun run dev --port 8080   # порт по умолчанию 8080
+bun run dev --port 8080    # порт по умолчанию 8080
 ```
 
-Тестовая страница откроется на `http://localhost:8080`. Адрес API задаётся атрибутом `data-api` на теге `<script>` в `index.html`. Origin страницы должен быть в `ALLOWED_ORIGINS` API.
+Откройте `http://localhost:8080`. Адрес API задаётся атрибутом `data-api` на теге `<script>` в `index.html`. Для встраивания на сайт:
+
+```html
+<script src="https://your-cdn/widget.js" data-api="https://chat.example.com"></script>
+```
+
+## Переменные окружения
+
+### API (`vizaje-chat-api/.env`, шаблон в `.env.example`)
+
+| Переменная | Обязательна | По умолчанию | Что делает |
+|---|---|---|---|
+| `DATABASE_URL` | да | — | Строка подключения к PostgreSQL |
+| `JWT_SECRET` | да | — | Секрет подписи JWT; без него сервер не стартует |
+| `ALLOWED_ORIGINS` | нет | `http://localhost:5173,http://localhost:8080` | Origins для CORS через запятую. Добавьте сюда домен сайта с виджетом и домен админки |
+| `TRUST_PROXY` | нет | `false` | `true`, если API за reverse proxy: IP клиента берётся из `X-Forwarded-For` (нужно для rate-limit) |
+
+### Админка (`vizaje-chat-admin/.env`)
+
+| Переменная | Обязательна | По умолчанию | Что делает |
+|---|---|---|---|
+| `VITE_API_URL` | нет | `http://localhost:3001` | Адрес API; адрес WebSocket строится из него. Подставляется при сборке |
 
 ## Тест realtime без фронта
 
 ```bash
+cd vizaje-chat-api
 bun run src/scripts/test-realtime.ts
 ```
 
-Прогоняет полный цикл: создание widget-сессии → admin login → оба WS коннектятся → обмен сообщениями в обе стороны. Полезно после любых правок WS-логики — быстрее, чем тестировать руками через браузер.
+Прогоняет полный цикл: создание widget-сессии → admin login → оба WS коннектятся → обмен сообщениями в обе стороны. Полезно после любых правок WS-логики — быстрее, чем тестировать руками через браузер. Скрипт логинится под админом, которого вы создали через `create-admin.ts`: email и пароль сейчас прописаны в самом скрипте, поправьте их под своего админа.
 
-## Связанные репозитории
+## Планы
 
-- Веб-админка: [vizaje-chat-admin](https://github.com/arionel07/vizaje-chat-admin) (Vite + React)
-- Мобильная админка: планируется (React Native)
+- Мобильная админка (React Native)
