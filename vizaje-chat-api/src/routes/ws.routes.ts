@@ -54,7 +54,12 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			store = { type: 'admin', email: admin.email }
 		}
 
-		console.log('WS connected:', store)
+		console.log(
+			'WS connected:',
+			store.type === 'visitor'
+				? `visitor, conversation ${store.conversationId}`
+				: 'admin'
+		)
 		connections.set(ws.id, store)
 		ws.subscribe(
 			store.type === 'visitor'
