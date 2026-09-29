@@ -2,7 +2,11 @@ import { Elysia } from 'elysia'
 import jwt from 'jsonwebtoken'
 import { verifyToken } from '../auth/guard'
 import { allowVisitorMessage } from '../chat/rate-limit'
-import { addMessage, conversationExists } from '../chat/service'
+import {
+	addMessage,
+	conversationExists,
+	replyTargetExists
+} from '../chat/service'
 import { verifySessionToken } from '../widget/service'
 
 type ConnStore =
@@ -25,6 +29,14 @@ function parseText(body: unknown): string | null {
 	const trimmed = text.trim()
 	if (!trimmed || trimmed.length > MAX_TEXT_LENGTH) return null
 	return trimmed
+}
+
+// Необязательный id сообщения, на которое отвечаем: undefined — не указан, null — некорректный
+function getReplyToId(body: unknown): number | null | undefined {
+	if (typeof body !== 'object' || body === null) return undefined
+	const id = (body as { replyToId?: unknown }).replyToId
+	if (id === undefined) return undefined
+	return typeof id === 'number' && Number.isInteger(id) && id > 0 ? id : null
 }
 
 // Необязательный идентификатор сообщения от клиента: возвращается в ошибке,
@@ -133,7 +145,8 @@ export const wsRoutes = new Elysia().ws('/ws', {
 
 		const clientId = getClientId(body)
 		const text = parseText(body)
-		if (!text) {
+		const replyToId = getReplyToId(body)
+		if (!text || replyToId === null) {
 			sendError(ws, 'Invalid message', clientId)
 			return
 		}
@@ -143,7 +156,11 @@ export const wsRoutes = new Elysia().ws('/ws', {
 				sendError(ws, 'Too many messages', clientId)
 				return
 			}
-			const msg = await addMessage(store.conversationId, 'visitor', text)
+			if (replyToId && !(await replyTargetExists(store.conversationId, replyToId))) {
+				sendError(ws, 'Reply target not found', clientId)
+				return
+			}
+			const msg = await addMessage(store.conversationId, 'visitor', text, replyToId)
 			const payload = JSON.stringify(msg)
 			ws.publish(`conversation:${store.conversationId}`, payload)
 			ws.publish('admin:global', payload)
@@ -161,7 +178,11 @@ export const wsRoutes = new Elysia().ws('/ws', {
 				sendError(ws, 'Conversation not found', clientId)
 				return
 			}
-			const msg = await addMessage(conversationId, 'admin', text)
+			if (replyToId && !(await replyTargetExists(conversationId, replyToId))) {
+				sendError(ws, 'Reply target not found', clientId)
+				return
+			}
+			const msg = await addMessage(conversationId, 'admin', text, replyToId)
 			const payload = JSON.stringify(msg)
 			ws.publish(`conversation:${conversationId}`, payload)
 			ws.publish('admin:global', payload)

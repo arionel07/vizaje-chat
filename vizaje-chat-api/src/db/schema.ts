@@ -1,4 +1,5 @@
 import {
+	type AnyPgColumn,
 	index,
 	integer,
 	pgEnum,
@@ -47,6 +48,10 @@ export const messages = pgTable(
 			.references(() => conversations.id),
 		sender: senderType('sender').notNull(),
 		text: text('text').notNull(),
+		// ответ на сообщение (цитата); при удалении исходного остаётся без цитаты
+		replyToId: integer('reply_to_id').references((): AnyPgColumn => messages.id, {
+			onDelete: 'set null'
+		}),
 		createdAt: timestamp('created_at').defaultNow().notNull()
 	},
 	t => [index('messages_conversation_id_idx').on(t.conversationId, t.id)]

@@ -10,7 +10,8 @@ import {
 	addMessage,
 	getAdminReadAt,
 	getMessages,
-	markVisitorRead
+	markVisitorRead,
+	replyTargetExists
 } from '../chat/service'
 import { createSession, verifySessionToken } from '../widget/service'
 
@@ -34,12 +35,27 @@ export const widgetRoutes = new Elysia()
 				set.status = 429
 				return { error: 'Too many messages' }
 			}
-			const msg = await addMessage(session.conversationId, 'visitor', body.text)
+			if (
+				body.replyToId &&
+				!(await replyTargetExists(session.conversationId, body.replyToId))
+			) {
+				set.status = 404
+				return { error: 'Reply target not found' }
+			}
+			const msg = await addMessage(
+				session.conversationId,
+				'visitor',
+				body.text,
+				body.replyToId
+			)
 			publishMessage(session.conversationId, msg)
 			return msg
 		},
 		{
-			body: t.Object({ text: t.String() })
+			body: t.Object({
+				text: t.String(),
+				replyToId: t.Optional(t.Integer({ minimum: 1 }))
+			})
 		}
 	)
 	// посетитель увидел сообщения — оператор покажет «Прочитано»

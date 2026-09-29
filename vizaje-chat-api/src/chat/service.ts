@@ -1,12 +1,48 @@
 import { and, desc, eq, lt, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { db } from '../db/client'
 import { conversations, messages } from '../db/schema'
 import { publishMessage } from './events'
 
+// Цитата в ответе: краткая выдержка из исходного сообщения
+export const REPLY_SNIPPET_LENGTH = 200
+export type ReplyTo = { id: number; sender: string; text: string }
+
+// Ответить можно только на сообщение из той же беседы (иначе чужой текст утёк бы в цитату)
+export async function replyTargetExists(
+	conversationId: number,
+	messageId: number
+) {
+	const [row] = await db
+		.select({ id: messages.id })
+		.from(messages)
+		.where(
+			and(
+				eq(messages.id, messageId),
+				eq(messages.conversationId, conversationId)
+			)
+		)
+	return !!row
+}
+
+async function getReplyTo(messageId: number): Promise<ReplyTo | null> {
+	const [row] = await db
+		.select({
+			id: messages.id,
+			sender: messages.sender,
+			text: sql<string>`left(${messages.text}, ${REPLY_SNIPPET_LENGTH})`
+		})
+		.from(messages)
+		.where(eq(messages.id, messageId))
+	return row ?? null
+}
+
+// replyToId должен быть заранее проверен через replyTargetExists
 export async function addMessage(
 	conversationId: number,
 	sender: 'visitor' | 'admin' | 'bot' | 'system',
-	text: string
+	text: string,
+	replyToId?: number | null
 ) {
 	// посетитель пишет в закрытую беседу — открываем её заново
 	if (sender === 'visitor') {
@@ -21,10 +57,13 @@ export async function addMessage(
 
 	const [message] = await db
 		.insert(messages)
-		.values({ conversationId, sender, text })
+		.values({ conversationId, sender, text, replyToId: replyToId ?? null })
 		.returning()
 	if (!message) throw new Error('Failed to insert message')
-	return message
+	return {
+		...message,
+		replyTo: replyToId ? await getReplyTo(replyToId) : null
+	}
 }
 
 export async function conversationExists(conversationId: number) {
@@ -48,9 +87,20 @@ export async function getMessages(
 		Math.max(Math.trunc(limit ?? DEFAULT_MESSAGES_LIMIT), 1),
 		MAX_MESSAGES_LIMIT
 	)
+	const parent = alias(messages, 'parent')
 	const rows = await db
-		.select()
+		.select({
+			id: messages.id,
+			conversationId: messages.conversationId,
+			sender: messages.sender,
+			text: messages.text,
+			createdAt: messages.createdAt,
+			replyToId: messages.replyToId,
+			parentSender: parent.sender,
+			parentText: sql<string | null>`left(${parent.text}, ${REPLY_SNIPPET_LENGTH})`
+		})
 		.from(messages)
+		.leftJoin(parent, eq(messages.replyToId, parent.id))
 		.where(
 			and(
 				eq(messages.conversationId, conversationId),
@@ -59,7 +109,13 @@ export async function getMessages(
 		)
 		.orderBy(desc(messages.id))
 		.limit(size)
-	return rows.reverse()
+	return rows.reverse().map(({ parentSender, parentText, ...m }) => ({
+		...m,
+		replyTo:
+			m.replyToId && parentSender && parentText !== null
+				? { id: m.replyToId, sender: parentSender, text: parentText }
+				: null
+	}))
 }
 
 export const DEFAULT_CONVERSATIONS_LIMIT = 30
