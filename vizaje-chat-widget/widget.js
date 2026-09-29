@@ -23,6 +23,7 @@
   .msg { max-width: 80%; padding: 10px 14px; border-radius: 14px; font-size: 14px; }
   .msg.visitor { align-self: flex-end; background: #111; color: #fff; }
   .msg.admin, .msg.bot { align-self: flex-start; background: #f1f1f1; color: #111; }
+  .msg.visitor.failed { background: #fff; color: #c0392b; border: 1px solid #c0392b; }
   .msg.system { align-self: center; background: none; color: #888; font-size: 12px; }
   #chat-input-row { display: flex; padding: 12px; border-top: 1px solid #eee; gap: 8px; }
   #chat-input { flex: 1; border: 1px solid #ddd; border-radius: 20px; padding: 10px 14px; font-size: 14px; outline: none; }
@@ -60,6 +61,30 @@
 		div.textContent = text
 		messagesEl.appendChild(div)
 		messagesEl.scrollTop = messagesEl.scrollHeight
+		return div
+	}
+
+	// сервер не подтверждает успех, шлёт только ошибку — считаем сообщение
+	// доставленным, если ошибка не пришла за ACK_TIMEOUT_MS
+	const ACK_TIMEOUT_MS = 2000
+	const pending = []
+
+	function trackPending(div) {
+		const entry = { div }
+		entry.timer = setTimeout(() => {
+			const i = pending.indexOf(entry)
+			if (i !== -1) pending.splice(i, 1)
+		}, ACK_TIMEOUT_MS)
+		pending.push(entry)
+	}
+
+	function markOldestFailed(reason) {
+		const entry = pending.shift()
+		if (!entry) return
+		clearTimeout(entry.timer)
+		entry.div.classList.add('failed')
+		entry.div.title = reason
+		entry.div.insertAdjacentText('beforeend', ' ⚠ не отправлено')
 	}
 
 	function resetSession() {
@@ -100,10 +125,15 @@
 		ws = new WebSocket(`${WS_URL}?token=${token}`)
 		ws.onopen = () => {
 			reconnectDelay = 1000
+			input.placeholder = 'Ваше сообщение...'
 		}
 		ws.onmessage = event => {
 			const msg = JSON.parse(event.data)
-			if (!msg.sender) return // служебные сообщения (например, ошибки)
+			if (msg.type === 'error') {
+				markOldestFailed(msg.error)
+				return
+			}
+			if (!msg.sender) return // прочие служебные сообщения
 			renderMessage(msg.sender, msg.text)
 		}
 		ws.onerror = e => console.error('widget ws error', e)
@@ -135,8 +165,13 @@
 
 	function sendMessage() {
 		const text = input.value.trim()
-		if (!text || !ws || ws.readyState !== WebSocket.OPEN) return
-		renderMessage('visitor', text)
+		if (!text) return
+		if (!ws || ws.readyState !== WebSocket.OPEN) {
+			// нет соединения: не теряем текст, показываем причину
+			input.placeholder = 'Нет соединения, повторите позже...'
+			return
+		}
+		trackPending(renderMessage('visitor', text))
 		ws.send(JSON.stringify({ text }))
 		input.value = ''
 	}
