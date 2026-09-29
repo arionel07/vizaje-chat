@@ -50,20 +50,39 @@ export type Conversation = {
 
 export const CONVERSATIONS_PAGE_SIZE = 30
 
+export type ConversationFilter = 'all' | 'open' | 'closed' | 'unread'
+
+export type ConversationCounts = { open: number; closed: number; unread: number }
+
 export async function fetchConversations(
 	token: string,
-	{ limit = CONVERSATIONS_PAGE_SIZE, offset = 0 } = {}
+	{
+		limit = CONVERSATIONS_PAGE_SIZE,
+		offset = 0,
+		filter = 'all'
+	}: { limit?: number; offset?: number; filter?: ConversationFilter } = {}
 ) {
 	const params = new URLSearchParams({
 		limit: String(limit),
 		offset: String(offset)
 	})
+	if (filter === 'open' || filter === 'closed') params.set('status', filter)
+	if (filter === 'unread') params.set('unread', 'true')
 	const res = await fetch(`${API_URL}/admin/conversations?${params}`, {
 		headers: { Authorization: `Bearer ${token}` }
 	})
 	handleUnauthorized(res)
 	assertOk(res)
 	return res.json() as Promise<Conversation[]>
+}
+
+export async function fetchCounts(token: string) {
+	const res = await fetch(`${API_URL}/admin/conversations/counts`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return res.json() as Promise<ConversationCounts>
 }
 
 // проверяет, что токен ещё действителен; при 401 — выход на логин.

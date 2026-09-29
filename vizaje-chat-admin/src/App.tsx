@@ -1,42 +1,78 @@
-import { useState } from 'react'
+import { MessageSquareText } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { LoginForm } from './auth/LoginForm'
 import { ChatWindow } from './chat/ChatWindow'
 import { ConversationList } from './conversations/ConversationList'
+import type { Conversation } from './lib/api'
+
+const panelClass =
+	'min-w-0 flex-col overflow-hidden bg-white dark:bg-zinc-900 md:rounded-2xl md:border md:border-zinc-200 dark:md:border-zinc-800'
+
 function App() {
 	const [token, setToken] = useState(localStorage.getItem('admin_token'))
-	const [selectedId, setSelectedId] = useState<number | null>(null)
+	const [selected, setSelected] = useState<Conversation | null>(null)
 	const [refreshKey, setRefreshKey] = useState(0)
 
 	function logout() {
 		localStorage.removeItem('admin_token')
-		setSelectedId(null)
+		setSelected(null)
 		setToken(null)
 	}
+
+	const refreshList = useCallback(() => setRefreshKey(k => k + 1), [])
+
+	// свежие данные выбранной беседы из списка (статус, превью)
+	const syncSelected = useCallback(
+		(fresh: Conversation) =>
+			setSelected(prev => (prev && prev.id === fresh.id ? fresh : prev)),
+		[]
+	)
 
 	if (!token) {
 		return <LoginForm onSuccess={setToken} />
 	}
 
+	// Телефон: один экран — список или чат. От md: две колонки.
 	return (
-		<div className="flex h-screen">
-			<ConversationList
-				token={token}
-				onSelect={setSelectedId}
-				selectedId={selectedId}
-				refreshKey={refreshKey}
-				onLogout={logout}
-			/>
-			<div className="flex-1">
-				{selectedId ? (
+		<div className="flex h-dvh md:gap-3 md:p-3">
+			<aside
+				className={`${panelClass} ${selected ? 'hidden md:flex' : 'flex'} w-full md:w-[360px] md:shrink-0`}
+			>
+				<ConversationList
+					token={token}
+					onSelect={setSelected}
+					onSync={syncSelected}
+					selectedId={selected?.id ?? null}
+					refreshKey={refreshKey}
+					onLogout={logout}
+				/>
+			</aside>
+			<main className={`${panelClass} ${selected ? 'flex' : 'hidden md:flex'} flex-1`}>
+				{selected ? (
 					<ChatWindow
-							token={token}
-							conversationId={selectedId}
-							onActivity={() => setRefreshKey(k => k + 1)}
-						/>
+						key={selected.id}
+						token={token}
+						conversation={selected}
+						onBack={() => setSelected(null)}
+						onActivity={refreshList}
+						onStatusChange={status =>
+							setSelected(prev => (prev ? { ...prev, status } : prev))
+						}
+					/>
 				) : (
-					<div className="p-[16px]">Выбери беседу слева</div>
+					<div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-zinc-500 dark:text-zinc-400">
+						<span className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
+							<MessageSquareText aria-hidden="true" className="h-8 w-8" />
+						</span>
+						<p className="text-base font-medium text-zinc-900 dark:text-zinc-100">
+							Выберите беседу
+						</p>
+						<p className="max-w-xs text-sm">
+							Сообщения посетителей сайта появятся здесь
+						</p>
+					</div>
 				)}
-			</div>
+			</main>
 		</div>
 	)
 }
