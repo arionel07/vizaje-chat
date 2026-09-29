@@ -1,6 +1,7 @@
 import { CircleAlert, Eye, EyeOff, Loader2, Lock, Mail } from 'lucide-react'
 import { useState } from 'react'
 import { login, LoginError } from '../lib/api'
+import { ThemeToggle } from '../theme/ThemeToggle'
 
 function errorMessage(e: unknown) {
 	if (e instanceof LoginError) {
@@ -41,6 +42,7 @@ export function LoginForm({
 
 	return (
 		<main className="flex flex-1 items-center justify-center px-4 py-8 text-left">
+			<ThemeToggle className="fixed left-4 top-4" />
 			<div className="w-full max-w-sm sm:rounded-2xl sm:border sm:border-solid sm:border-zinc-200 sm:p-8 sm:shadow-sm dark:sm:border-zinc-800">
 				<h1 className="m-0 text-2xl font-semibold tracking-tight text-zinc-950 dark:text-white">
 					Добро пожаловать
