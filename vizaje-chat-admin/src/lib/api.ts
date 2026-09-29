@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:3001'
+import { API_URL } from './config'
 
 // токен протух или невалиден — сбрасываем и выкидываем на логин-форму
 function handleUnauthorized(res: Response) {
