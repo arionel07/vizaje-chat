@@ -6,7 +6,7 @@ import {
 	Send,
 	User
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
 	fetchMessages,
 	markRead,
@@ -16,6 +16,7 @@ import {
 } from '../lib/api'
 import { formatTime } from '../lib/format'
 import { connectAdminWs, type AdminWs } from '../lib/ws'
+import { TypingDots } from './TypingDots'
 
 type Message = {
 	id: number
@@ -23,9 +24,14 @@ type Message = {
 	sender: string
 	text: string
 	createdAt: string
+	clientId?: string // только для отправленных отсюда сообщений
+	pending?: boolean // отправлено, серверное подтверждение (sent) ещё не пришло
+	failed?: boolean // сервер отклонил сообщение
 }
 
 const NEAR_BOTTOM_PX = 150
+const TYPING_EMIT_MS = 3000 // не чаще, чем раз в 3 с сообщаем «печатаю»
+const TYPING_SHOW_MS = 5000 // «печатает» гаснет, если событий больше нет
 
 // Компонент нужно монтировать с key={conversation.id}: состояние привязано к беседе
 export function ChatWindow({
@@ -48,6 +54,11 @@ export function ChatWindow({
 	const [hasMore, setHasMore] = useState(false)
 	const [loadingMore, setLoadingMore] = useState(false)
 	const [toggling, setToggling] = useState(false)
+	const [visitorTyping, setVisitorTyping] = useState(false)
+	const [readEventAt, setReadEventAt] = useState(0) // «прочитано» из живого события
+	const typingTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+	const lastTypingSentRef = useRef(0)
+	const sendSeqRef = useRef(0)
 	const wsRef = useRef<AdminWs | null>(null)
 	const listRef = useRef<HTMLDivElement | null>(null)
 	const nearBottomRef = useRef(true)
@@ -131,8 +142,50 @@ export function ChatWindow({
 	useEffect(() => {
 		const ws = connectAdminWs(
 			token,
-			(msg: Message) => {
+			(msg: Message & Record<string, unknown>) => {
+				// служебные события: подтверждение отправки, ошибка, «печатает», «прочитано»
+				switch (msg.type) {
+					case 'sent':
+						setMessages(prev =>
+							prev.map(m =>
+								m.clientId && m.clientId === msg.clientId
+									? {
+											...m,
+											id: msg.id as number,
+											createdAt: msg.createdAt as string,
+											pending: false
+										}
+									: m
+							)
+						)
+						return
+					case 'error':
+						setMessages(prev =>
+							prev.map(m =>
+								m.clientId && m.clientId === msg.clientId
+									? { ...m, pending: false, failed: true }
+									: m
+							)
+						)
+						return
+					case 'typing':
+						if (msg.from === 'visitor' && msg.conversationId === conversationId) {
+							setVisitorTyping(true)
+							clearTimeout(typingTimerRef.current)
+							typingTimerRef.current = setTimeout(
+								() => setVisitorTyping(false),
+								TYPING_SHOW_MS
+							)
+						}
+						return
+					case 'read':
+						if (msg.by === 'visitor' && msg.conversationId === conversationId) {
+							setReadEventAt(Date.parse(msg.at as string) || 0)
+						}
+						return
+				}
 				if (msg.conversationId === conversationId) {
+					if (msg.sender === 'visitor') setVisitorTyping(false)
 					setMessages(prev => [...prev, msg])
 					// открытая беседа: новое сообщение посетителя сразу считаем прочитанным
 					if (msg.sender === 'visitor') {
@@ -147,14 +200,48 @@ export function ChatWindow({
 			}
 		)
 		wsRef.current = ws
-		return () => ws.close()
+		return () => {
+			clearTimeout(typingTimerRef.current)
+			ws.close()
+		}
 	}, [token, conversationId, loadLatest, syncRead])
+
+	// «печатает» появилось внизу — показываем, если читаем конец беседы
+	useEffect(() => {
+		const list = listRef.current
+		if (visitorTyping && list && nearBottomRef.current) {
+			list.scrollTop = list.scrollHeight
+		}
+	}, [visitorTyping])
+
+	// «Прочитано» — под последним сообщением оператора, которое посетитель уже видел.
+	// Сравниваем только серверное время (у неподтверждённых сообщений его ещё нет)
+	const lastReadAdminId = useMemo(() => {
+		const readAt = Math.max(
+			Date.parse(conversation.visitorLastReadAt ?? '') || 0,
+			readEventAt
+		)
+		if (!readAt) return null
+		for (let i = messages.length - 1; i >= 0; i--) {
+			const m = messages[i]!
+			if (
+				m.sender === 'admin' &&
+				!m.pending &&
+				!m.failed &&
+				Date.parse(m.createdAt) <= readAt
+			) {
+				return m.id
+			}
+		}
+		return null
+	}, [messages, conversation.visitorLastReadAt, readEventAt])
 
 	function sendMessage() {
 		const text = input.trim()
 		if (!text || !wsRef.current) return
 		// нет соединения — не теряем текст и не рисуем «отправленное» сообщение
-		if (!wsRef.current.send(JSON.stringify({ conversationId, text }))) return
+		const clientId = `${Date.now().toString(36)}-${++sendSeqRef.current}`
+		if (!wsRef.current.send(JSON.stringify({ conversationId, text, clientId }))) return
 		nearBottomRef.current = true
 		setMessages(prev => [
 			...prev,
@@ -162,9 +249,11 @@ export function ChatWindow({
 				id: Date.now(),
 				sender: 'admin',
 				text,
-				createdAt: new Date().toISOString()
+				createdAt: new Date().toISOString(),
+				clientId,
+				pending: true
 			}
-		]) // optimistic
+		]) // optimistic: id и время заменит подтверждение sent
 		setInput('')
 		onActivityRef.current?.()
 	}
@@ -263,19 +352,36 @@ export function ChatWindow({
 							>
 								<div
 									className={`max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-base md:max-w-[70%] ${
-										mine
-											? 'rounded-br-md bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-											: 'rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100'
+										m.failed
+											? 'rounded-br-md border border-red-500 text-red-600 dark:text-red-400'
+											: mine
+												? 'rounded-br-md bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+												: 'rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100'
 									}`}
 								>
 									{m.text}
 								</div>
-								<span className="mt-0.5 px-1 text-[11px] text-zinc-400 dark:text-zinc-500">
-									{formatTime(m.createdAt)}
+								<span
+									className={`mt-0.5 px-1 text-[11px] ${
+										m.failed
+											? 'text-red-600 dark:text-red-400'
+											: 'text-zinc-400 dark:text-zinc-500'
+									}`}
+								>
+									{m.failed
+										? 'Не отправлено'
+										: `${formatTime(m.createdAt)}${m.id === lastReadAdminId ? ' · Прочитано' : ''}`}
 								</span>
 							</div>
 						)
 					})}
+					{visitorTyping && (
+						<div className="flex items-start">
+							<div className="rounded-2xl rounded-bl-md bg-zinc-100 px-4 py-3.5 dark:bg-zinc-800">
+								<TypingDots label="Посетитель печатает" />
+							</div>
+						</div>
+					)}
 				</div>
 			</div>
 
@@ -295,7 +401,15 @@ export function ChatWindow({
 			>
 				<input
 					value={input}
-					onChange={e => setInput(e.target.value)}
+					onChange={e => {
+						setInput(e.target.value)
+						// сообщаем посетителю «печатает» (не чаще раза в TYPING_EMIT_MS)
+						const now = Date.now()
+						if (e.target.value.trim() && now - lastTypingSentRef.current > TYPING_EMIT_MS) {
+							lastTypingSentRef.current = now
+							wsRef.current?.send(JSON.stringify({ type: 'typing', conversationId }))
+						}
+					}}
 					placeholder="Ответ…"
 					aria-label="Сообщение"
 					autoComplete="off"

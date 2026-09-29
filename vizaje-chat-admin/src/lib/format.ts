@@ -12,7 +12,8 @@ const DAY = 24 * 60 * 60 * 1000
 
 // время сообщения: 14:05
 export function formatTime(iso: string) {
-	return timeFmt.format(new Date(iso))
+	const d = new Date(iso)
+	return Number.isNaN(d.getTime()) ? '' : timeFmt.format(d)
 }
 
 // для списка: сегодня — время, до недели назад — день недели, раньше — дата

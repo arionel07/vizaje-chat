@@ -13,6 +13,7 @@ import { connectAdminWs } from '../lib/ws'
 import { ThemeToggle } from '../theme/ThemeToggle'
 
 const MAX_RELOAD = 100 // максимум, который отдаёт API за один запрос
+const TYPING_SHOW_MS = 5000
 
 const FILTERS: { id: ConversationFilter; label: string }[] = [
 	{ id: 'all', label: 'Все' },
@@ -20,6 +21,15 @@ const FILTERS: { id: ConversationFilter; label: string }[] = [
 	{ id: 'open', label: 'Открытые' },
 	{ id: 'closed', label: 'Закрытые' }
 ]
+
+// то же множество (без лишнего рендера), если состояние не изменилось
+function withTyping(prev: Set<number>, id: number, typing: boolean) {
+	if (prev.has(id) === typing) return prev
+	const next = new Set(prev)
+	if (typing) next.add(id)
+	else next.delete(id)
+	return next
+}
 
 function countFor(id: ConversationFilter, counts: ConversationCounts | null) {
 	if (!counts) return null
@@ -50,6 +60,9 @@ export function ConversationList({
 	const [loading, setLoading] = useState(true)
 	const [loadingMore, setLoadingMore] = useState(false)
 	const [loadFailed, setLoadFailed] = useState(false)
+	// беседы, где посетитель сейчас печатает (гаснет через TYPING_SHOW_MS)
+	const [typingIds, setTypingIds] = useState<Set<number>>(new Set())
+	const typingTimersRef = useRef(new Map<number, ReturnType<typeof setTimeout>>())
 	const countRef = useRef(0)
 	const requestRef = useRef(0)
 	const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -106,14 +119,49 @@ export function ConversationList({
 		reload().catch(() => {})
 	}, [reload, refreshKey])
 
-	// любое новое сообщение (admin:global) обновляет превью и счётчики
+	const setTyping = useCallback((conversationId: number, typing: boolean) => {
+		const timers = typingTimersRef.current
+		clearTimeout(timers.get(conversationId))
+		timers.delete(conversationId)
+		if (typing) {
+			timers.set(
+				conversationId,
+				setTimeout(() => {
+					timers.delete(conversationId)
+					setTypingIds(prev => withTyping(prev, conversationId, false))
+				}, TYPING_SHOW_MS)
+			)
+		}
+		setTypingIds(prev => withTyping(prev, conversationId, typing))
+	}, [])
+
+	// сообщения и события «прочитано» (admin:global) обновляют превью и счётчики;
+	// «печатает» — только пометка в списке; sent/error касаются лишь окна чата
+	const handleWsEvent = useCallback(
+		(msg: { type?: string; from?: string; sender?: string; conversationId?: number }) => {
+			if (msg.type === 'typing') {
+				if (msg.from === 'visitor' && msg.conversationId)
+					setTyping(msg.conversationId, true)
+				return
+			}
+			if (msg.type === 'sent' || msg.type === 'error') return
+			if (msg.sender === 'visitor' && msg.conversationId)
+				setTyping(msg.conversationId, false)
+			scheduleReload()
+		},
+		[scheduleReload, setTyping]
+	)
+
 	useEffect(() => {
-		const ws = connectAdminWs(token, scheduleReload, scheduleReload)
+		const ws = connectAdminWs(token, handleWsEvent, scheduleReload)
+		const timers = typingTimersRef.current
 		return () => {
 			clearTimeout(timerRef.current)
+			timers.forEach(clearTimeout)
+			timers.clear()
 			ws.close()
 		}
-	}, [token, scheduleReload])
+	}, [token, handleWsEvent, scheduleReload])
 
 	async function loadMore() {
 		setLoadingMore(true)
@@ -256,14 +304,18 @@ export function ConversationList({
 										<span className="mt-0.5 flex items-center justify-between gap-2">
 											<span
 												className={`truncate text-sm ${
-													unread
-														? 'text-zinc-900 dark:text-zinc-100'
-														: 'text-zinc-500 dark:text-zinc-400'
+													typingIds.has(c.id)
+														? 'text-emerald-600 dark:text-emerald-400'
+														: unread
+															? 'text-zinc-900 dark:text-zinc-100'
+															: 'text-zinc-500 dark:text-zinc-400'
 												}`}
 											>
-												{c.lastMessageText
-													? `${c.lastMessageSender === 'admin' ? 'Вы: ' : ''}${c.lastMessageText}`
-													: 'Нет сообщений'}
+												{typingIds.has(c.id)
+													? 'печатает…'
+													: c.lastMessageText
+														? `${c.lastMessageSender === 'admin' ? 'Вы: ' : ''}${c.lastMessageText}`
+														: 'Нет сообщений'}
 											</span>
 											{unread > 0 && (
 												<span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-semibold text-white">

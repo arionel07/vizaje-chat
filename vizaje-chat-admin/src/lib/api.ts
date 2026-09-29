@@ -42,6 +42,7 @@ export type Conversation = {
 	sessionId: string
 	status: 'open' | 'closed'
 	createdAt: string
+	visitorLastReadAt: string | null // когда посетитель видел сообщения — для «Прочитано»
 	lastMessageText: string | null
 	lastMessageSender: string | null
 	lastMessageAt: string | null

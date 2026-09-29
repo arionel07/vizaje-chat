@@ -36,7 +36,8 @@ export function connectAdminWs(
 				return // не JSON — игнорируем
 			}
 			if (typeof msg !== 'object' || msg === null) return
-			if ((msg as { type?: string }).type === 'error') return // ответ сервера об ошибке
+			// сообщения (есть sender) и служебные события (type: sent | error | typing | read):
+			// обработчик сам решает, что с ними делать
 			onMessage(msg)
 		}
 		ws.onclose = () => {

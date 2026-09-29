@@ -22,7 +22,9 @@
 	const THEME = ['light', 'dark'].includes(cfg.theme) ? cfg.theme : 'auto'
 
 	const PAGE_SIZE = 50
-	const ACK_TIMEOUT_MS = 2000
+	const ACK_TIMEOUT_MS = 10000 // подтверждение sent не пришло — перестаём отслеживать
+	const TYPING_EMIT_MS = 3000 // не чаще, чем раз в 3 с сообщаем «печатаю»
+	const TYPING_SHOW_MS = 5000 // «печатает» гаснет, если событий больше нет
 	const TOAST_MS = 15000
 	const MAX_INPUT_HEIGHT = 120
 
@@ -119,6 +121,11 @@
   .meta { margin: 3px 4px 0; font-size: 11px; color: var(--muted); }
   .row.failed .meta { color: var(--danger); }
   .row.system { align-self: center; max-width: 100%; margin: 8px 0; font-size: 12px; color: var(--muted); text-align: center; }
+  .typing .bubble { display: flex; align-items: center; gap: 4px; padding: 14px 16px; }
+  .typing .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite ease-in-out; }
+  .typing .dot:nth-child(2) { animation-delay: .2s; }
+  .typing .dot:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 60%, 100% { opacity: .3; transform: none; } 30% { opacity: 1; transform: translateY(-2px); } }
   .load-more { align-self: center; margin-bottom: 8px; padding: 6px 14px; border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 12px; }
   .load-more:disabled { opacity: .6; cursor: default; }
 
@@ -132,7 +139,7 @@
   .send:disabled { opacity: .35; cursor: default; }
 
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
-  @media (prefers-reduced-motion: reduce) { .toast, .root.open .panel { animation: none; } .launcher { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .toast, .root.open .panel, .typing .dot { animation: none; } .launcher { transition: none; } }
 
   /* телефон: панель на весь экран, лаунчер скрыт (закрытие — в шапке) */
   @media (max-width: 480px) {
@@ -197,6 +204,11 @@
 	let lastSeenId = Number(localStorage.getItem('widget_last_seen')) || 0
 	const renderedIds = new Set()
 	let sendSeq = 0
+	let adminReadAt = null // когда оператор последний раз читал беседу (ISO)
+	let maxAgentId = 0
+	let readReported = 0 // id последнего сообщения сотрудника, о прочтении которого сообщили серверу
+	let lastTypingSent = 0
+	let typingTimer
 
 	const timeFmt = new Intl.DateTimeFormat('ru-RU', {
 		hour: '2-digit',
@@ -215,6 +227,27 @@
 		} else {
 			greeting.remove()
 		}
+	}
+
+	// «печатает»: пузырь с тремя точками в конце ленты (не сообщение, в истории не хранится)
+	const typingEl = document.createElement('div')
+	typingEl.className = 'row agent typing'
+	typingEl.setAttribute('aria-hidden', 'true')
+	typingEl.innerHTML =
+		'<div class="bubble"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>'
+	const nearBottom = () =>
+		messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120
+	function hideTyping() {
+		clearTimeout(typingTimer)
+		typingEl.remove()
+	}
+	function showTyping() {
+		if (!isOpen) return
+		const stick = nearBottom()
+		if (!typingEl.isConnected) messagesEl.appendChild(typingEl)
+		if (stick) messagesEl.scrollTop = messagesEl.scrollHeight
+		clearTimeout(typingTimer)
+		typingTimer = setTimeout(hideTyping, TYPING_SHOW_MS)
 	}
 
 	const loadMoreBtn = document.createElement('button')
@@ -245,6 +278,9 @@
 			meta.className = 'meta'
 			const time = timeFmt.format(m.createdAt ? new Date(m.createdAt) : new Date())
 			meta.textContent = mine ? time : `${AGENT} · ${time}`
+			// серверное время — для «Прочитано»; у только что отправленного оно придёт в sent
+			row.dataset.ts = m.createdAt || ''
+			row.dataset.time = time
 			row.append(bubble, meta)
 		}
 		if (prepend) {
@@ -254,12 +290,14 @@
 				loadMoreBtn.isConnected ? loadMoreBtn.nextSibling : messagesEl.firstChild
 			)
 		} else {
-			messagesEl.appendChild(row)
+			// новые сообщения — перед индикатором «печатает»
+			messagesEl.insertBefore(row, typingEl.isConnected ? typingEl : null)
 			messagesEl.scrollTop = messagesEl.scrollHeight
 		}
 		if (m.id) {
 			renderedIds.add(m.id)
 			maxId = Math.max(maxId, m.id)
+			if (isAgent(m.sender)) maxAgentId = Math.max(maxAgentId, m.id)
 		}
 		updateGreeting()
 		return row
@@ -275,6 +313,32 @@
 			if (i !== -1) pending.splice(i, 1)
 		}, ACK_TIMEOUT_MS)
 		pending.push(entry)
+	}
+	// сервер подтвердил сообщение: подставляем его id и серверное время
+	function onSent(ack) {
+		const i = pending.findIndex(e => e.clientId === ack.clientId)
+		if (i === -1) return
+		const entry = pending.splice(i, 1)[0]
+		clearTimeout(entry.timer)
+		entry.row.dataset.ts = ack.createdAt
+		entry.row.dataset.time = timeFmt.format(new Date(ack.createdAt))
+		if (ack.id) {
+			renderedIds.add(ack.id)
+			maxId = Math.max(maxId, ack.id)
+		}
+		updateReceipts()
+	}
+	// «Прочитано» — под последним сообщением посетителя, которое оператор уже видел
+	function updateReceipts() {
+		const readAt = adminReadAt ? Date.parse(adminReadAt) : null
+		let lastRead = null
+		for (const row of messagesEl.querySelectorAll('.row.visitor:not(.failed)')) {
+			row.querySelector('.meta').textContent = row.dataset.time
+			if (readAt && row.dataset.ts && Date.parse(row.dataset.ts) <= readAt) {
+				lastRead = row
+			}
+		}
+		if (lastRead) lastRead.querySelector('.meta').textContent += ' · Прочитано'
 	}
 	// clientId возвращает сервер; без него (старый сервер) — самое раннее из ожидающих
 	function markFailed(clientId, reason) {
@@ -307,6 +371,20 @@
 		}
 		unread = 0
 		updateBadge()
+		reportRead()
+	}
+	// посетитель видит ответы (панель открыта, вкладка на виду) — оператор покажет «Прочитано»
+	function reportRead() {
+		if (!isOpen || document.visibilityState !== 'visible' || !token) return
+		if (maxAgentId <= readReported) return
+		const prev = readReported
+		readReported = maxAgentId
+		fetch(`${API_URL}/widget/read`, {
+			method: 'POST',
+			headers: { Authorization: `Bearer ${token}` }
+		}).catch(() => {
+			readReported = prev // сеть недоступна — попробуем при следующем случае
+		})
 	}
 	function hideToast() {
 		clearTimeout(toastTimer)
@@ -377,6 +455,19 @@
 		hasMore = messages.length === PAGE_SIZE
 		updateLoadMore()
 		updateGreeting()
+		updateReceipts()
+	}
+
+	// когда оператор последний раз читал беседу (для «Прочитано»); сбой не критичен
+	async function loadState() {
+		try {
+			const res = await fetch(`${API_URL}/widget/state`, {
+				headers: { Authorization: `Bearer ${token}` }
+			})
+			if (!res.ok) return
+			adminReadAt = (await res.json()).adminLastReadAt
+			updateReceipts()
+		} catch {}
 	}
 
 	async function loadOlder() {
@@ -390,6 +481,7 @@
 			// вставляем с конца, чтобы порядок остался хронологическим
 			for (let i = older.length - 1; i >= 0; i--) renderMessage(older[i], true)
 			messagesEl.scrollTop += messagesEl.scrollHeight - prevHeight
+			updateReceipts()
 			oldestId = older[0]?.id ?? oldestId
 			hasMore = older.length === PAGE_SIZE
 			updateLoadMore()
@@ -420,8 +512,20 @@
 				return
 			}
 			if (!msg || typeof msg !== 'object') return
+			// служебные события
 			if (msg.type === 'error') return markFailed(msg.clientId, msg.error)
+			if (msg.type === 'sent') return onSent(msg)
+			if (msg.type === 'typing') return msg.from === 'admin' && showTyping()
+			if (msg.type === 'read') {
+				if (msg.by === 'admin') {
+					adminReadAt = msg.at
+					updateReceipts()
+				}
+				return
+			}
+			// обычное сообщение
 			if (!msg.sender || renderedIds.has(msg.id)) return
+			if (isAgent(msg.sender)) hideTyping()
 			renderMessage(msg)
 			if (isAgent(msg.sender)) onAgentMessage(msg, true)
 		}
@@ -438,6 +542,7 @@
 		try {
 			await ensureSession()
 			await loadHistory()
+			await loadState()
 			connectWs()
 		} catch (e) {
 			console.error('widget start failed', e)
@@ -496,7 +601,21 @@
 		sendMessage()
 		input.focus()
 	})
-	input.addEventListener('input', autosize)
+	input.addEventListener('input', () => {
+		autosize()
+		// сообщаем оператору «печатаю» (не чаще раза в TYPING_EMIT_MS)
+		const now = Date.now()
+		if (
+			input.value.trim() &&
+			ws &&
+			ws.readyState === WebSocket.OPEN &&
+			now - lastTypingSent > TYPING_EMIT_MS
+		) {
+			lastTypingSent = now
+			ws.send(JSON.stringify({ type: 'typing' }))
+		}
+	})
+	document.addEventListener('visibilitychange', reportRead)
 	input.addEventListener('keydown', e => {
 		// Enter — отправить, Shift+Enter — новая строка; не мешаем IME-вводу
 		if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
