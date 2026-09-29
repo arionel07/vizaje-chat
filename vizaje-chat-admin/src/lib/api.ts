@@ -14,6 +14,11 @@ function handleUnauthorized(res: Response) {
 	throw new UnauthorizedError()
 }
 
+// не-2xx ответ (кроме 401, он обрабатывается отдельно) — ошибка, а не «данные»
+function assertOk(res: Response) {
+	if (!res.ok) throw new Error(`Request failed: ${res.status}`)
+}
+
 export async function login(email: string, password: string) {
 	const res = await fetch(`${API_URL}/admin/auth/login`, {
 		method: 'POST',
@@ -48,6 +53,7 @@ export async function fetchConversations(
 		headers: { Authorization: `Bearer ${token}` }
 	})
 	handleUnauthorized(res)
+	assertOk(res)
 	return res.json() as Promise<Conversation[]>
 }
 
@@ -85,6 +91,7 @@ export async function fetchMessages(
 		}
 	)
 	handleUnauthorized(res)
+	assertOk(res)
 	return res.json() as Promise<
 		Array<{ id: number; sender: string; text: string; createdAt: string }>
 	>

@@ -24,6 +24,7 @@ export function ConversationList({
 	const [conversations, setConversations] = useState<Conversation[]>([])
 	const [hasMore, setHasMore] = useState(false)
 	const [loadingMore, setLoadingMore] = useState(false)
+	const [loadFailed, setLoadFailed] = useState(false)
 	const countRef = useRef(0)
 	const requestRef = useRef(0)
 	const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -35,11 +36,17 @@ export function ConversationList({
 			Math.max(countRef.current, CONVERSATIONS_PAGE_SIZE),
 			MAX_RELOAD
 		)
-		const page = await fetchConversations(token, { limit })
-		if (requestId !== requestRef.current) return
-		countRef.current = page.length
-		setConversations(page)
-		setHasMore(page.length === limit)
+		try {
+			const page = await fetchConversations(token, { limit })
+			if (requestId !== requestRef.current) return
+			countRef.current = page.length
+			setConversations(page)
+			setHasMore(page.length === limit)
+			setLoadFailed(false)
+		} catch (e) {
+			if (requestId === requestRef.current) setLoadFailed(true)
+			throw e
+		}
 	}, [token])
 
 	// несколько событий подряд (или отправка своего сообщения) — одна перезагрузка
@@ -70,6 +77,8 @@ export function ConversationList({
 			countRef.current += page.length
 			setConversations(prev => [...prev, ...page])
 			setHasMore(page.length === CONVERSATIONS_PAGE_SIZE)
+		} catch {
+			setLoadFailed(true)
 		} finally {
 			setLoadingMore(false)
 		}
@@ -81,6 +90,12 @@ export function ConversationList({
 				<span>Беседы</span>
 				<button onClick={onLogout}>Выйти</button>
 			</div>
+			{loadFailed && (
+				<div className="p-[12px] text-[red] text-[12px]">
+					Не удалось загрузить беседы. Проверьте, что API запущен и схема БД
+					применена (bunx drizzle-kit push).
+				</div>
+			)}
 			{conversations.map(c => {
 				const unread = c.id === selectedId ? 0 : c.unreadCount
 				return (

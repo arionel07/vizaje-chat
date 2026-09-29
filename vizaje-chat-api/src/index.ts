@@ -9,6 +9,14 @@ import { wsRoutes } from './routes/ws.routes'
 
 const app = new Elysia()
 	.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }))
+	.onError(({ code, error, set }) => {
+		// внутренние ошибки (например, упавший SQL) логируем, клиенту — без деталей
+		if (code === 'UNKNOWN' || code === 'INTERNAL_SERVER_ERROR') {
+			console.error(error)
+			set.status = 500
+			return { error: 'Internal server error' }
+		}
+	})
 	.get('/health', () => ({ status: 'ok' }))
 	.use(authRoutes)
 	.use(widgetRoutes)
