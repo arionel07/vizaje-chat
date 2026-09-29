@@ -17,3 +17,6 @@ export const ALLOWED_ORIGINS = (
 	.split(',')
 	.map(o => o.trim())
 	.filter(Boolean)
+
+// true, если сервис стоит за reverse proxy, который выставляет X-Forwarded-For
+export const TRUST_PROXY = process.env.TRUST_PROXY === 'true'

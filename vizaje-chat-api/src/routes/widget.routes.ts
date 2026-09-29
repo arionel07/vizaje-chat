@@ -1,10 +1,15 @@
 import { Elysia, t } from 'elysia'
-import { allowVisitorMessage } from '../chat/rate-limit'
+import { getClientIp } from '../chat/client-ip'
+import { allowSessionCreate, allowVisitorMessage } from '../chat/rate-limit'
 import { addMessage, getMessages } from '../chat/service'
 import { createSession, verifySessionToken } from '../widget/service'
 
 export const widgetRoutes = new Elysia()
-	.post('/widget/session', async () => {
+	.post('/widget/session', async ({ set, request, server }) => {
+		if (!allowSessionCreate(getClientIp({ request, server }))) {
+			set.status = 429
+			return { error: 'Too many sessions, try again later' }
+		}
 		return createSession()
 	})
 	.post(
