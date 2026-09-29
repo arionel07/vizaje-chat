@@ -23,8 +23,20 @@ function parseText(body: unknown): string | null {
 	return trimmed
 }
 
-function sendError(ws: { send: (data: string) => unknown }, error: string) {
-	ws.send(JSON.stringify({ type: 'error', error }))
+// Необязательный идентификатор сообщения от клиента: возвращается в ошибке,
+// чтобы клиент мог понять, какое именно сообщение отклонено
+function getClientId(body: unknown): string | undefined {
+	if (typeof body !== 'object' || body === null) return undefined
+	const id = (body as { clientId?: unknown }).clientId
+	return typeof id === 'string' ? id.slice(0, 64) : undefined
+}
+
+function sendError(
+	ws: { send: (data: string) => unknown },
+	error: string,
+	clientId?: string
+) {
+	ws.send(JSON.stringify({ type: 'error', error, clientId }))
 }
 
 export const wsRoutes = new Elysia().ws('/ws', {
@@ -71,15 +83,16 @@ export const wsRoutes = new Elysia().ws('/ws', {
 		const store = connections.get(ws.id)
 		if (!store) return
 
+		const clientId = getClientId(body)
 		const text = parseText(body)
 		if (!text) {
-			sendError(ws, 'Invalid message')
+			sendError(ws, 'Invalid message', clientId)
 			return
 		}
 
 		if (store.type === 'visitor') {
 			if (!allowVisitorMessage(store.conversationId)) {
-				sendError(ws, 'Too many messages')
+				sendError(ws, 'Too many messages', clientId)
 				return
 			}
 			const msg = await addMessage(store.conversationId, 'visitor', text)
@@ -96,7 +109,7 @@ export const wsRoutes = new Elysia().ws('/ws', {
 				!Number.isInteger(conversationId) ||
 				!(await conversationExists(conversationId))
 			) {
-				sendError(ws, 'Conversation not found')
+				sendError(ws, 'Conversation not found', clientId)
 				return
 			}
 			const msg = await addMessage(conversationId, 'admin', text)

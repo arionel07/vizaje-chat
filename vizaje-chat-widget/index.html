@@ -2,9 +2,20 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Widget test page</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 32px 20px; line-height: 1.5; color: #18181b; }
+  main { max-width: 640px; margin: 0 auto; }
+  @media (prefers-color-scheme: dark) { body { background: #0b0b0d; color: #e4e4e7; } }
+</style>
 </head>
 <body>
+<main>
+  <h1>Тестовая страница</h1>
+  <p>Кнопка чата — в правом нижнем углу. Атрибуты <code>data-theme</code> (auto, light, dark),
+     <code>data-title</code> и <code>data-agent</code> настраивают вид виджета.</p>
+</main>
 <script src="./widget.js" data-api="http://localhost:3001"></script>
 </body>
 </html>

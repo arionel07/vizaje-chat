@@ -18,7 +18,9 @@ const files: Record<string, string> = {
 Bun.serve({
 	port,
 	fetch(req) {
-		const name = files[new URL(req.url).pathname]
+		const pathname = new URL(req.url).pathname
+		if (pathname === '/favicon.ico') return new Response(null, { status: 204 })
+		const name = files[pathname]
 		if (!name) return new Response('Not found', { status: 404 })
 		return new Response(Bun.file(new URL(name, import.meta.url).pathname))
 	}
