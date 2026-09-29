@@ -19,13 +19,22 @@ function assertOk(res: Response) {
 	if (!res.ok) throw new Error(`Request failed: ${res.status}`)
 }
 
+// ошибка входа с HTTP-статусом: 401 — неверные данные, 429 — слишком много попыток
+export class LoginError extends Error {
+	status: number
+	constructor(status: number) {
+		super(`Login failed: ${status}`)
+		this.status = status
+	}
+}
+
 export async function login(email: string, password: string) {
 	const res = await fetch(`${API_URL}/admin/auth/login`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ email, password })
 	})
-	if (!res.ok) throw new Error('Invalid credentials')
+	if (!res.ok) throw new LoginError(res.status)
 	return res.json() as Promise<{ token: string }>
 }
 export type Conversation = {
