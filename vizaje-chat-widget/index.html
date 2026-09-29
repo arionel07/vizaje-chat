@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Widget test page</title>
+<style>
+  body { font-family: -apple-system, sans-serif; margin: 0; }
+  #chat-bubble { position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px; border-radius: 50%; background: #111; color: #fff; border: none; font-size: 24px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+  #chat-panel { position: fixed; bottom: 96px; right: 24px; width: 360px; height: 520px; background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.15); display: none; flex-direction: column; overflow: hidden; }
+  #chat-panel.open { display: flex; }
+  #chat-header { padding: 16px; background: #111; color: #fff; display: flex; justify-content: space-between; align-items: center; }
+  #chat-header .close { cursor: pointer; opacity: .8; }
+  #chat-messages { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 80%; padding: 10px 14px; border-radius: 14px; font-size: 14px; }
+  .msg.visitor { align-self: flex-end; background: #111; color: #fff; }
+  .msg.admin { align-self: flex-start; background: #f1f1f1; color: #111; }
+  #chat-input-row { display: flex; padding: 12px; border-top: 1px solid #eee; gap: 8px; }
+  #chat-input { flex: 1; border: 1px solid #ddd; border-radius: 20px; padding: 10px 14px; font-size: 14px; outline: none; }
+  #chat-send { width: 36px; height: 36px; border-radius: 50%; background: #111; color: #fff; border: none; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<button id="chat-bubble">💬</button>
+
+<div id="chat-panel">
+  <div id="chat-header">
+    <span>Поддержка Vizaje-Nica</span>
+    <span class="close" id="chat-close">✕</span>
+  </div>
+  <div id="chat-messages"></div>
+  <div id="chat-input-row">
+    <input id="chat-input" placeholder="Ваше сообщение...">
+    <button id="chat-send">↑</button>
+  </div>
+</div>
+
+<script>
+  const API_URL = 'http://localhost:3001'
+  const bubble = document.getElementById('chat-bubble')
+  const panel = document.getElementById('chat-panel')
+  const closeBtn = document.getElementById('chat-close')
+  const messagesEl = document.getElementById('chat-messages')
+  const input = document.getElementById('chat-input')
+  const sendBtn = document.getElementById('chat-send')
+
+  let token = localStorage.getItem('widget_token')
+  let ws = null
+
+  function renderMessage(sender, text) {
+    const div = document.createElement('div')
+    div.className = `msg ${sender}`
+    div.textContent = text
+    messagesEl.appendChild(div)
+    messagesEl.scrollTop = messagesEl.scrollHeight
+  }
+
+  async function ensureSession() {
+    if (token) return token
+    const res = await fetch(`${API_URL}/widget/session`, { method: 'POST' })
+    const data = await res.json()
+    token = data.token
+    localStorage.setItem('widget_token', token)
+    return token
+  }
+
+  async function loadHistory() {
+    const res = await fetch(`${API_URL}/widget/messages`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const messages = await res.json()
+    messages.forEach(m => renderMessage(m.sender, m.text))
+  }
+
+  function connectWs() {
+    ws = new WebSocket(`ws://localhost:3001/ws?token=${token}`)
+    ws.onopen = () => console.log('widget ws open')
+    ws.onmessage = (event) => {
+      console.log('widget received:', event.data)
+      const msg = JSON.parse(event.data)
+      renderMessage(msg.sender, msg.text)
+    }
+    ws.onerror = (e) => console.error('widget ws error', e)
+  }
+
+  async function openChat() {
+    panel.classList.add('open')
+    if (!ws || ws.readyState === WebSocket.CLOSED) {
+      await ensureSession()
+      await loadHistory()
+      connectWs()
+    }
+  }
+
+  function sendMessage() {
+    const text = input.value.trim()
+    if (!text || !ws) return
+    renderMessage('visitor', text)
+    ws.send(JSON.stringify({ text }))
+    input.value = ''
+  }
+
+  bubble.addEventListener('click', openChat)
+  closeBtn.addEventListener('click', () => panel.classList.remove('open'))
+  sendBtn.addEventListener('click', sendMessage)
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage() })
+</script>
+
+</body>
+</html>
