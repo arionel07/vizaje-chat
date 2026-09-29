@@ -2,11 +2,14 @@ import {
 	ArrowLeft,
 	Check,
 	Lock,
+	Reply,
 	RotateCcw,
 	Send,
-	User
+	User,
+	X
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import {
 	fetchMessages,
 	markRead,
@@ -18,8 +21,11 @@ import { formatTime } from '../lib/format'
 import { connectAdminWs, type AdminWs } from '../lib/ws'
 import { TypingDots } from './TypingDots'
 
+type ReplyTo = { id: number; sender: string; text: string }
+
 type Message = {
 	id: number
+	replyTo?: ReplyTo | null // цитата сообщения, на которое это — ответ
 	conversationId?: number
 	sender: string
 	text: string
@@ -32,6 +38,11 @@ type Message = {
 const NEAR_BOTTOM_PX = 150
 const TYPING_EMIT_MS = 3000 // не чаще, чем раз в 3 с сообщаем «печатаю»
 const TYPING_SHOW_MS = 5000 // «печатает» гаснет, если событий больше нет
+const LONG_PRESS_MS = 450 // долгое нажатие на сообщение (телефон) — ответить
+const QUOTE_LENGTH = 200
+const MAX_SEARCH_PAGES = 10 // сколько страниц истории подгружать в поисках исходного сообщения
+
+const authorLabel = (sender: string) => (sender === 'admin' ? 'Вы' : 'Посетитель')
 
 // Компонент нужно монтировать с key={conversation.id}: состояние привязано к беседе
 export function ChatWindow({
@@ -55,6 +66,14 @@ export function ChatWindow({
 	const [loadingMore, setLoadingMore] = useState(false)
 	const [toggling, setToggling] = useState(false)
 	const [visitorTyping, setVisitorTyping] = useState(false)
+	const [replyTarget, setReplyTarget] = useState<ReplyTo | null>(null)
+	const [flashId, setFlashId] = useState<number | null>(null)
+	const flashTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+	const pressRef = useRef<{ timer?: ReturnType<typeof setTimeout>; x: number; y: number }>({
+		x: 0,
+		y: 0
+	})
+	const inputRef = useRef<HTMLInputElement | null>(null)
 	const [readEventAt, setReadEventAt] = useState(0) // «прочитано» из живого события
 	const typingTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const lastTypingSentRef = useRef(0)
@@ -139,6 +158,61 @@ export function ChatWindow({
 		}
 	}
 
+	function startReply(m: Message) {
+		if (m.pending || m.failed || m.sender === 'system') return // у сообщения нет серверного id
+		setReplyTarget({ id: m.id, sender: m.sender, text: m.text.slice(0, QUOTE_LENGTH) })
+		inputRef.current?.focus()
+	}
+
+	// долгое нажатие на сообщение (сенсорный экран) — ответить
+	function pressStart(e: React.PointerEvent, m: Message) {
+		if (e.pointerType !== 'touch') return
+		pressRef.current = {
+			x: e.clientX,
+			y: e.clientY,
+			timer: setTimeout(() => {
+				startReply(m)
+				navigator.vibrate?.(15)
+			}, LONG_PRESS_MS)
+		}
+	}
+	function pressCancel() {
+		clearTimeout(pressRef.current.timer)
+	}
+	function pressMove(e: React.PointerEvent) {
+		const { x, y } = pressRef.current
+		if (Math.abs(e.clientX - x) > 8 || Math.abs(e.clientY - y) > 8) pressCancel()
+	}
+
+	// прокрутка к исходному сообщению; если оно в ещё не загруженной истории — подгружаем
+	async function scrollToMessage(id: number) {
+		const find = () => listRef.current?.querySelector<HTMLElement>(`[data-mid="${id}"]`)
+		let el = find()
+		let before = messages[0]?.id
+		let more = hasMore
+		for (let i = 0; !el && more && before && i < MAX_SEARCH_PAGES; i++) {
+			try {
+				const older = await fetchMessages(token, conversationId, before)
+				skipScrollRef.current = true
+				flushSync(() => {
+					setMessages(prev => [...older, ...prev])
+					setHasMore(older.length === MESSAGES_PAGE_SIZE)
+				})
+				more = older.length === MESSAGES_PAGE_SIZE
+				before = older[0]?.id
+			} catch {
+				return // сеть недоступна
+			}
+			el = find()
+		}
+		if (!el) return // исходного сообщения нет (слишком давно или удалено)
+		const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+		el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
+		setFlashId(id)
+		clearTimeout(flashTimerRef.current)
+		flashTimerRef.current = setTimeout(() => setFlashId(null), 1400)
+	}
+
 	useEffect(() => {
 		const ws = connectAdminWs(
 			token,
@@ -202,6 +276,8 @@ export function ChatWindow({
 		wsRef.current = ws
 		return () => {
 			clearTimeout(typingTimerRef.current)
+			clearTimeout(flashTimerRef.current)
+			clearTimeout(pressRef.current.timer)
 			ws.close()
 		}
 	}, [token, conversationId, loadLatest, syncRead])
@@ -241,7 +317,13 @@ export function ChatWindow({
 		if (!text || !wsRef.current) return
 		// нет соединения — не теряем текст и не рисуем «отправленное» сообщение
 		const clientId = `${Date.now().toString(36)}-${++sendSeqRef.current}`
-		if (!wsRef.current.send(JSON.stringify({ conversationId, text, clientId }))) return
+		const replyToId = replyTarget?.id
+		if (
+			!wsRef.current.send(
+				JSON.stringify({ conversationId, text, clientId, ...(replyToId ? { replyToId } : {}) })
+			)
+		)
+			return
 		nearBottomRef.current = true
 		setMessages(prev => [
 			...prev,
@@ -251,9 +333,11 @@ export function ChatWindow({
 				text,
 				createdAt: new Date().toISOString(),
 				clientId,
-				pending: true
+				pending: true,
+				replyTo: replyTarget
 			}
 		]) // optimistic: id и время заменит подтверждение sent
+		setReplyTarget(null)
 		setInput('')
 		onActivityRef.current?.()
 	}
@@ -348,18 +432,59 @@ export function ChatWindow({
 						return (
 							<div
 								key={m.id}
-								className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}
+								data-mid={m.id}
+								className={`group flex flex-col ${mine ? 'items-end' : 'items-start'}`}
 							>
 								<div
-									className={`max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-base md:max-w-[70%] ${
-										m.failed
-											? 'rounded-br-md border border-red-500 text-red-600 dark:text-red-400'
-											: mine
-												? 'rounded-br-md bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-												: 'rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100'
+									className={`flex max-w-[85%] items-center gap-1 md:max-w-[70%] ${
+										mine ? 'flex-row-reverse' : ''
 									}`}
 								>
-									{m.text}
+									<div
+										onPointerDown={e => pressStart(e, m)}
+										onPointerMove={pressMove}
+										onPointerUp={pressCancel}
+										onPointerCancel={pressCancel}
+										onPointerLeave={pressCancel}
+										className={`min-w-0 whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-base transition-shadow [@media(hover:none)]:select-none [@media(hover:none)]:[-webkit-touch-callout:none] ${
+											flashId === m.id ? 'ring-2 ring-zinc-900 dark:ring-white' : ''
+										} ${
+											m.failed
+												? 'rounded-br-md border border-red-500 text-red-600 dark:text-red-400'
+												: mine
+													? 'rounded-br-md bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+													: 'rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100'
+										}`}
+									>
+										{m.replyTo && (
+											<button
+												type="button"
+												onClick={() => scrollToMessage(m.replyTo!.id)}
+												onPointerDown={e => e.stopPropagation()}
+												aria-label="Перейти к исходному сообщению"
+												className="mb-1.5 block w-full cursor-pointer rounded-md border-0 border-l-[3px] border-solid border-current bg-black/10 px-2 py-1 text-left text-[13px] leading-snug text-inherit dark:bg-white/10"
+											>
+												<span className="block font-semibold opacity-85">
+													{authorLabel(m.replyTo.sender)}
+												</span>
+												<span className="line-clamp-2 block break-words opacity-85">
+													{m.replyTo.text}
+												</span>
+											</button>
+										)}
+										{m.text}
+									</div>
+									{!m.pending && !m.failed && (
+										<button
+											type="button"
+											onClick={() => startReply(m)}
+											aria-label="Ответить на сообщение"
+											title="Ответить"
+											className="hidden h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-zinc-500 opacity-0 transition-opacity hover:bg-zinc-100 hover:text-zinc-900 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 group-hover:opacity-100 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-300/30 [@media(hover:hover)]:flex"
+										>
+											<Reply aria-hidden="true" className="h-4 w-4" />
+										</button>
+									)}
 								</div>
 								<span
 									className={`mt-0.5 px-1 text-[11px] ${
@@ -392,6 +517,28 @@ export function ChatWindow({
 				</div>
 			)}
 
+			{replyTarget && (
+				<div className="flex items-center gap-2 border-t border-zinc-200 bg-zinc-50 py-2 pl-4 pr-2 dark:border-zinc-800 dark:bg-zinc-800/50">
+					<div className="min-w-0 flex-1 border-l-[3px] border-zinc-900 pl-2 dark:border-zinc-100">
+						<div className="text-xs font-semibold">{authorLabel(replyTarget.sender)}</div>
+						<div className="truncate text-[13px] text-zinc-500 dark:text-zinc-400">
+							{replyTarget.text}
+						</div>
+					</div>
+					<button
+						type="button"
+						onClick={() => {
+							setReplyTarget(null)
+							inputRef.current?.focus()
+						}}
+						aria-label="Отменить ответ"
+						className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
+					>
+						<X aria-hidden="true" className="h-4 w-4" />
+					</button>
+				</div>
+			)}
+
 			<form
 				onSubmit={e => {
 					e.preventDefault()
@@ -400,7 +547,11 @@ export function ChatWindow({
 				className="flex items-center gap-2 border-t border-zinc-200 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-zinc-800"
 			>
 				<input
+					ref={inputRef}
 					value={input}
+					onKeyDown={e => {
+						if (e.key === 'Escape' && replyTarget) setReplyTarget(null)
+					}}
 					onChange={e => {
 						setInput(e.target.value)
 						// сообщаем посетителю «печатает» (не чаще раза в TYPING_EMIT_MS)

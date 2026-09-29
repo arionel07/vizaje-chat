@@ -27,6 +27,8 @@
 	const TYPING_SHOW_MS = 5000 // «печатает» гаснет, если событий больше нет
 	const TOAST_MS = 15000
 	const MAX_INPUT_HEIGHT = 120
+	const LONG_PRESS_MS = 450 // долгое нажатие на сообщение (телефон) — ответить
+	const QUOTE_LENGTH = 200
 
 	// --- иконки (lucide, inline: виджет без сборки и зависимостей) -----------
 	const svg = (body, size = 24, extra = '') =>
@@ -35,6 +37,7 @@
 	const ICON_CHEVRON = svg('<path d="m6 9 6 6 6-6"/>', 26)
 	const ICON_CLOSE = svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', 20)
 	const ICON_SEND = svg('<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>', 20)
+	const ICON_REPLY = svg('<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>', 16)
 	const ICON_AVATAR = svg(
 		'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
 		20
@@ -126,6 +129,24 @@
   .typing .dot:nth-child(2) { animation-delay: .2s; }
   .typing .dot:nth-child(3) { animation-delay: .4s; }
   @keyframes blink { 0%, 60%, 100% { opacity: .3; transform: none; } 30% { opacity: 1; transform: translateY(-2px); } }
+  .line { display: flex; align-items: center; gap: 4px; max-width: 100%; }
+  .bubble { min-width: 0; }
+  .reply-btn { flex: none; width: 28px; height: 28px; border-radius: 50%; color: var(--muted);
+    display: flex; align-items: center; justify-content: center; opacity: 0; }
+  .row:hover .reply-btn, .reply-btn:focus-visible { opacity: 1; }
+  .reply-btn:hover { background: var(--surface); color: var(--fg); }
+  .row:not([data-id]) .reply-btn { display: none; }
+  .quote { margin: -2px 0 6px; padding: 4px 8px; border-left: 3px solid currentColor; border-radius: 6px;
+    background: rgba(127,127,127,.18); font-size: 13px; line-height: 1.35; cursor: pointer; text-align: left; }
+  .quote-author { font-weight: 600; opacity: .85; }
+  .quote-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; opacity: .85; }
+  .row.flash .bubble { animation: flash 1.3s ease-out; }
+  @keyframes flash { 0%, 50% { box-shadow: 0 0 0 3px var(--ring); } 100% { box-shadow: 0 0 0 3px transparent; } }
+  .reply-bar { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; border-top: 1px solid var(--border); background: var(--surface); }
+  .reply-bar-text { flex: 1; min-width: 0; border-left: 3px solid var(--ring); padding-left: 8px; }
+  .reply-author { font-size: 12px; font-weight: 600; }
+  .reply-snippet { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row.failed .quote { border-color: var(--danger); }
   .load-more { align-self: center; margin-bottom: 8px; padding: 6px 14px; border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 12px; }
   .load-more:disabled { opacity: .6; cursor: default; }
 
@@ -139,7 +160,12 @@
   .send:disabled { opacity: .35; cursor: default; }
 
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
-  @media (prefers-reduced-motion: reduce) { .toast, .root.open .panel, .typing .dot { animation: none; } .launcher { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .toast, .root.open .panel, .typing .dot, .row.flash .bubble { animation: none; } .launcher { transition: none; } }
+
+  @media (hover: none) and (pointer: coarse) {
+    .reply-btn { display: none; }
+    .bubble { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  }
 
   /* телефон: панель на весь экран, лаунчер скрыт (закрытие — в шапке) */
   @media (max-width: 480px) {
@@ -165,6 +191,10 @@
     </header>
     <div class="banner" role="status" hidden>Нет соединения. Переподключаемся…</div>
     <div class="messages" role="log" aria-live="polite"></div>
+    <div class="reply-bar" hidden>
+      <div class="reply-bar-text"><div class="reply-author"></div><div class="reply-snippet"></div></div>
+      <button class="icon-btn reply-cancel" type="button" aria-label="Отменить ответ">${ICON_CLOSE}</button>
+    </div>
     <form class="composer">
       <textarea class="input" rows="1" placeholder="Задать вопрос…" aria-label="Сообщение"></textarea>
       <button class="send" type="submit" aria-label="Отправить" disabled>${ICON_SEND}</button>
@@ -186,6 +216,7 @@
 	const banner = $('.banner')
 	const messagesEl = $('.messages')
 	const form = $('.composer')
+	const replyBar = $('.reply-bar')
 	const input = $('.input')
 	const sendBtn = $('.send')
 	$('.title').textContent = TITLE
@@ -208,6 +239,7 @@
 	let maxAgentId = 0
 	let readReported = 0 // id последнего сообщения сотрудника, о прочтении которого сообщили серверу
 	let lastTypingSent = 0
+	let replyTarget = null // { id, sender, text } — на что сейчас отвечаем
 	let typingTimer
 
 	const timeFmt = new Intl.DateTimeFormat('ru-RU', {
@@ -262,7 +294,63 @@
 		}
 	}
 
-	// message: { id?, sender, text, createdAt? }
+	// --- ответ на сообщение (цитата) ---------------------------------------------
+	const authorLabel = sender => (sender === 'visitor' ? 'Вы' : AGENT)
+
+	function buildQuote(q) {
+		const el = document.createElement('div')
+		el.className = 'quote'
+		el.tabIndex = 0
+		el.setAttribute('role', 'button')
+		el.setAttribute('aria-label', 'Перейти к исходному сообщению')
+		const author = document.createElement('div')
+		author.className = 'quote-author'
+		author.textContent = authorLabel(q.sender)
+		const text = document.createElement('div')
+		text.className = 'quote-text'
+		text.textContent = q.text
+		el.append(author, text)
+		el.dataset.target = String(q.id)
+		return el
+	}
+
+	function startReply(row) {
+		const id = Number(row.dataset.id)
+		if (!id) return // сообщение ещё не подтверждено сервером
+		const sender = row.classList.contains('visitor') ? 'visitor' : 'agent'
+		replyTarget = {
+			id,
+			sender,
+			text: row.querySelector('.bubble .text').textContent.slice(0, QUOTE_LENGTH)
+		}
+		$('.reply-author').textContent = authorLabel(sender)
+		$('.reply-snippet').textContent = replyTarget.text
+		replyBar.hidden = false
+		input.focus()
+	}
+	function cancelReply() {
+		replyTarget = null
+		replyBar.hidden = true
+	}
+
+	const findRow = id => messagesEl.querySelector(`.row[data-id="${id}"]`)
+	// прокрутка к исходному сообщению; если оно в ещё не загруженной истории — подгружаем
+	async function scrollToMessage(id) {
+		let row = findRow(id)
+		for (let i = 0; !row && hasMore && i < 10; i++) {
+			await loadOlder()
+			row = findRow(id)
+		}
+		if (!row) return
+		const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+		row.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
+		row.classList.remove('flash')
+		void row.offsetWidth // перезапуск анимации
+		row.classList.add('flash')
+		setTimeout(() => row.classList.remove('flash'), 1400)
+	}
+
+	// message: { id?, sender, text, createdAt?, replyTo? }
 	function renderMessage(m, prepend = false) {
 		const row = document.createElement('div')
 		if (m.sender === 'system') {
@@ -273,7 +361,11 @@
 			row.className = `row ${mine ? 'visitor' : 'agent'}`
 			const bubble = document.createElement('div')
 			bubble.className = 'bubble'
-			bubble.textContent = m.text
+			if (m.replyTo) bubble.appendChild(buildQuote(m.replyTo))
+			const text = document.createElement('span')
+			text.className = 'text'
+			text.textContent = m.text
+			bubble.appendChild(text)
 			const meta = document.createElement('div')
 			meta.className = 'meta'
 			const time = timeFmt.format(m.createdAt ? new Date(m.createdAt) : new Date())
@@ -281,8 +373,19 @@
 			// серверное время — для «Прочитано»; у только что отправленного оно придёт в sent
 			row.dataset.ts = m.createdAt || ''
 			row.dataset.time = time
-			row.append(bubble, meta)
+			// кнопка «Ответить» — со стороны, противоположной краю чата
+			const replyBtn = document.createElement('button')
+			replyBtn.type = 'button'
+			replyBtn.className = 'reply-btn'
+			replyBtn.setAttribute('aria-label', 'Ответить на сообщение')
+			replyBtn.innerHTML = ICON_REPLY
+			const line = document.createElement('div')
+			line.className = 'line'
+			if (mine) line.append(replyBtn, bubble)
+			else line.append(bubble, replyBtn)
+			row.append(line, meta)
 		}
+		if (m.id) row.dataset.id = String(m.id)
 		if (prepend) {
 			// старые сообщения идут сразу под кнопкой «Загрузить ещё»
 			messagesEl.insertBefore(
@@ -320,6 +423,7 @@
 		if (i === -1) return
 		const entry = pending.splice(i, 1)[0]
 		clearTimeout(entry.timer)
+		if (ack.id) entry.row.dataset.id = String(ack.id)
 		entry.row.dataset.ts = ack.createdAt
 		entry.row.dataset.time = timeFmt.format(new Date(ack.createdAt))
 		if (ack.id) {
@@ -590,8 +694,10 @@
 			return
 		}
 		const clientId = `${Date.now().toString(36)}-${++sendSeq}`
-		trackPending(renderMessage({ sender: 'visitor', text }), clientId)
-		ws.send(JSON.stringify({ text, clientId }))
+		const replyToId = replyTarget?.id
+		trackPending(renderMessage({ sender: 'visitor', text, replyTo: replyTarget }), clientId)
+		ws.send(JSON.stringify({ text, clientId, ...(replyToId ? { replyToId } : {}) }))
+		cancelReply()
 		input.value = ''
 		autosize()
 	}
@@ -624,8 +730,47 @@
 		}
 	})
 	root.addEventListener('keydown', e => {
-		if (e.key === 'Escape' && isOpen) closeChat()
+		if (e.key !== 'Escape') return
+		// Escape сначала отменяет ответ, потом сворачивает чат
+		if (replyTarget) cancelReply()
+		else if (isOpen) closeChat()
 	})
+	$('.reply-cancel').addEventListener('click', () => {
+		cancelReply()
+		input.focus()
+	})
+	messagesEl.addEventListener('click', e => {
+		const btn = e.target.closest('.reply-btn')
+		if (btn) return startReply(btn.closest('.row'))
+		const quote = e.target.closest('.quote')
+		if (quote) scrollToMessage(Number(quote.dataset.target))
+	})
+	messagesEl.addEventListener('keydown', e => {
+		if ((e.key === 'Enter' || e.key === ' ') && e.target.classList?.contains('quote')) {
+			e.preventDefault()
+			scrollToMessage(Number(e.target.dataset.target))
+		}
+	})
+	// долгое нажатие на сообщение (сенсорный экран) — ответить
+	let pressTimer, pressX = 0, pressY = 0
+	const cancelPress = () => clearTimeout(pressTimer)
+	messagesEl.addEventListener('pointerdown', e => {
+		if (e.pointerType !== 'touch') return
+		const row = e.target.closest('.row.visitor, .row.agent')
+		if (!row || e.target.closest('.quote')) return
+		pressX = e.clientX
+		pressY = e.clientY
+		pressTimer = setTimeout(() => {
+			startReply(row)
+			if (navigator.vibrate) navigator.vibrate(15)
+		}, LONG_PRESS_MS)
+	})
+	messagesEl.addEventListener('pointermove', e => {
+		if (Math.abs(e.clientX - pressX) > 8 || Math.abs(e.clientY - pressY) > 8) cancelPress()
+	})
+	for (const type of ['pointerup', 'pointercancel', 'scroll']) {
+		messagesEl.addEventListener(type, cancelPress)
+	}
 	launcher.addEventListener('click', () => (isOpen ? closeChat() : openChat()))
 	closeBtn.addEventListener('click', closeChat)
 	toast.addEventListener('click', openChat)

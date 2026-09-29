@@ -111,11 +111,11 @@ bun run dev --port 8080    # порт по умолчанию 8080
 
 | Сообщение | Кто | Что делает |
 |---|---|---|
-| `{ text, clientId? }` | посетитель | Сообщение в свою беседу |
-| `{ conversationId, text, clientId? }` | админ | Сообщение в беседу |
+| `{ text, replyToId?, clientId? }` | посетитель | Сообщение в свою беседу; `replyToId` — ответ на сообщение (только из этой же беседы) |
+| `{ conversationId, text, replyToId?, clientId? }` | админ | Сообщение в беседу, в том числе ответ на сообщение |
 | `{ type: 'typing', conversationId? }` | оба | «Печатает» (не сохраняется, не чаще раза в секунду) |
 
-Сервер → клиент — обычные сообщения (`{ id, conversationId, sender, text, createdAt }`) и служебные события с полем `type`:
+Сервер → клиент — обычные сообщения (`{ id, conversationId, sender, text, createdAt, replyToId, replyTo }`, где `replyTo` — цитата `{ id, sender, text }` до 200 символов или `null`) и служебные события с полем `type`:
 
 | `type` | Кому | Поля |
 |---|---|---|
