@@ -1,10 +1,11 @@
 import { desc, eq } from 'drizzle-orm'
 import { db } from '../db/client'
 import { conversations, messages } from '../db/schema'
+import { publishMessage } from './events'
 
 export async function addMessage(
 	conversationId: number,
-	sender: 'visitor' | 'admin' | 'bot',
+	sender: 'visitor' | 'admin' | 'bot' | 'system',
 	text: string
 ) {
 	// посетитель пишет в закрытую беседу — открываем её заново
@@ -53,10 +54,11 @@ export async function updateConversationStatus(
 		.set({ status })
 		.where(eq(conversations.id, conversationId))
 		.returning()
-	await addMessage(
+	const systemMessage = await addMessage(
 		conversationId,
 		'system',
 		status === 'closed' ? 'Беседа закрыта' : 'Беседа открыта заново'
 	)
+	publishMessage(conversationId, systemMessage)
 	return updated
 }
