@@ -46,6 +46,8 @@
 
   let token = localStorage.getItem('widget_token')
   let ws = null
+  let starting = false
+  let reconnectDelay = 1000
 
   function renderMessage(sender, text) {
     const div = document.createElement('div')
@@ -68,33 +70,65 @@
     const res = await fetch(`${API_URL}/widget/messages`, {
       headers: { Authorization: `Bearer ${token}` }
     })
+    if (res.status === 401) {
+      // токен протух или не признан сервером — начинаем новую сессию
+      resetSession()
+      await ensureSession()
+      return loadHistory()
+    }
     const messages = await res.json()
+    messagesEl.textContent = ''
     messages.forEach(m => renderMessage(m.sender, m.text))
+  }
+
+  function resetSession() {
+    token = null
+    localStorage.removeItem('widget_token')
   }
 
   function connectWs() {
     ws = new WebSocket(`ws://localhost:3001/ws?token=${token}`)
-    ws.onopen = () => console.log('widget ws open')
+    ws.onopen = () => {
+      console.log('widget ws open')
+      reconnectDelay = 1000
+    }
     ws.onmessage = (event) => {
       console.log('widget received:', event.data)
       const msg = JSON.parse(event.data)
       renderMessage(msg.sender, msg.text)
     }
     ws.onerror = (e) => console.error('widget ws error', e)
+    ws.onclose = () => {
+      ws = null
+      setTimeout(start, reconnectDelay)
+      reconnectDelay = Math.min(reconnectDelay * 2, 15000)
+    }
+  }
+
+  async function start() {
+    if (starting || ws) return
+    starting = true
+    try {
+      await ensureSession()
+      await loadHistory()
+      connectWs()
+    } catch (e) {
+      console.error('widget start failed', e)
+      setTimeout(start, reconnectDelay)
+      reconnectDelay = Math.min(reconnectDelay * 2, 15000)
+    } finally {
+      starting = false
+    }
   }
 
   async function openChat() {
     panel.classList.add('open')
-    if (!ws || ws.readyState === WebSocket.CLOSED) {
-      await ensureSession()
-      await loadHistory()
-      connectWs()
-    }
+    await start()
   }
 
   function sendMessage() {
     const text = input.value.trim()
-    if (!text || !ws) return
+    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return
     renderMessage('visitor', text)
     ws.send(JSON.stringify({ text }))
     input.value = ''
