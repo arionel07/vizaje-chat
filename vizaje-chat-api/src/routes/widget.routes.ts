@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { getClientIp } from '../chat/client-ip'
+import { publishMessage } from '../chat/events'
 import { allowSessionCreate, allowVisitorMessage } from '../chat/rate-limit'
 import { addMessage, getMessages } from '../chat/service'
 import { createSession, verifySessionToken } from '../widget/service'
@@ -24,7 +25,9 @@ export const widgetRoutes = new Elysia()
 				set.status = 429
 				return { error: 'Too many messages' }
 			}
-			return addMessage(session.conversationId, 'visitor', body.text)
+			const msg = await addMessage(session.conversationId, 'visitor', body.text)
+			publishMessage(session.conversationId, msg)
+			return msg
 		},
 		{
 			body: t.Object({ text: t.String() })

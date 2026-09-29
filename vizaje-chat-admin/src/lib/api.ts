@@ -17,12 +17,40 @@ export async function login(email: string, password: string) {
 	if (!res.ok) throw new Error('Invalid credentials')
 	return res.json() as Promise<{ token: string }>
 }
-export async function fetchConversations(token: string) {
-	const res = await fetch(`${API_URL}/admin/conversations`, {
+export type Conversation = {
+	id: number
+	sessionId: string
+	status: 'open' | 'closed'
+	createdAt: string
+	lastMessageText: string | null
+	lastMessageSender: string | null
+	lastMessageAt: string | null
+	unreadCount: number
+}
+
+export const CONVERSATIONS_PAGE_SIZE = 30
+
+export async function fetchConversations(
+	token: string,
+	{ limit = CONVERSATIONS_PAGE_SIZE, offset = 0 } = {}
+) {
+	const params = new URLSearchParams({
+		limit: String(limit),
+		offset: String(offset)
+	})
+	const res = await fetch(`${API_URL}/admin/conversations?${params}`, {
 		headers: { Authorization: `Bearer ${token}` }
 	})
 	handleUnauthorized(res)
-	return res.json()
+	return res.json() as Promise<Conversation[]>
+}
+
+export async function markRead(token: string, conversationId: number) {
+	const res = await fetch(
+		`${API_URL}/admin/conversations/${conversationId}/read`,
+		{ method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+	)
+	handleUnauthorized(res)
 }
 
 export const MESSAGES_PAGE_SIZE = 50

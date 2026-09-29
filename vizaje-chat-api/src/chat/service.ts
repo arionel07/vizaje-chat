@@ -1,4 +1,4 @@
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { and, desc, eq, lt, sql } from 'drizzle-orm'
 import { db } from '../db/client'
 import { conversations, messages } from '../db/schema'
 import { publishMessage } from './events'
@@ -61,8 +61,76 @@ export async function getMessages(
 	return rows.reverse()
 }
 
-export async function getConversations() {
-	return db.select().from(conversations).orderBy(desc(conversations.createdAt))
+export const DEFAULT_CONVERSATIONS_LIMIT = 30
+export const MAX_CONVERSATIONS_LIMIT = 100
+
+// Беседы, отсортированные по последней активности, с последним сообщением
+// и числом непрочитанных сообщений посетителя
+export async function getConversations({
+	limit,
+	offset
+}: { limit?: number; offset?: number } = {}) {
+	const size = Math.min(
+		Math.max(Math.trunc(limit ?? DEFAULT_CONVERSATIONS_LIMIT), 1),
+		MAX_CONVERSATIONS_LIMIT
+	)
+	const skip = Math.max(Math.trunc(offset ?? 0), 0)
+
+	// Drizzle в подзапросах выводит колонки без имени таблицы ("id"), и они
+	// склеиваются с messages.id — поэтому внешние колонки квалифицируем вручную
+	const convId = sql`"conversations"."id"`
+	const convCreatedAt = sql`"conversations"."created_at"`
+	const convReadAt = sql`"conversations"."admin_last_read_at"`
+
+	const lastAt = () => sql`(
+		select m.created_at from messages m
+		where m.conversation_id = ${convId}
+		order by m.id desc limit 1
+	)`
+
+	return db
+		.select({
+			id: conversations.id,
+			sessionId: conversations.sessionId,
+			status: conversations.status,
+			createdAt: conversations.createdAt,
+			lastMessageText: sql<string | null>`(
+				select m.text from messages m
+				where m.conversation_id = ${convId}
+				order by m.id desc limit 1
+			)`,
+			lastMessageSender: sql<string | null>`(
+				select m.sender::text from messages m
+				where m.conversation_id = ${convId}
+				order by m.id desc limit 1
+			)`,
+			lastMessageAt: sql<Date | null>`${lastAt()}`.mapWith(conversations.createdAt),
+			unreadCount: sql<number>`(
+				select count(*)::int from messages m
+				where m.conversation_id = ${convId}
+					and m.sender = 'visitor'
+					and (
+						${convReadAt} is null
+						or m.created_at > ${convReadAt}
+					)
+			)`
+		})
+		.from(conversations)
+		.orderBy(
+			desc(sql`coalesce(${lastAt()}, ${convCreatedAt})`),
+			desc(conversations.id)
+		)
+		.limit(size)
+		.offset(skip)
+}
+
+export async function markConversationRead(conversationId: number) {
+	const [row] = await db
+		.update(conversations)
+		.set({ adminLastReadAt: sql`now()` })
+		.where(eq(conversations.id, conversationId))
+		.returning({ id: conversations.id })
+	return !!row
 }
 
 export async function updateConversationStatus(

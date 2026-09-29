@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { fetchMessages, MESSAGES_PAGE_SIZE, updateStatus } from '../lib/api'
+import {
+	fetchMessages,
+	markRead,
+	MESSAGES_PAGE_SIZE,
+	updateStatus
+} from '../lib/api'
 import { connectAdminWs } from '../lib/ws'
 
 type Message = {
@@ -12,10 +17,12 @@ type Message = {
 
 export function ChatWindow({
 	token,
-	conversationId
+	conversationId,
+	onActivity
 }: {
 	token: string
 	conversationId: number
+	onActivity?: () => void // сообщение отправлено или беседа прочитана — обновить список
 }) {
 	const [messages, setMessages] = useState<Message[]>([])
 	const [input, setInput] = useState('')
@@ -24,6 +31,18 @@ export function ChatWindow({
 	const [hasMore, setHasMore] = useState(false)
 	const [loadingMore, setLoadingMore] = useState(false)
 	const listRef = useRef<HTMLDivElement | null>(null)
+
+	// onActivity — новая функция на каждый рендер App; держим свежую в ref,
+	// чтобы не переподключать WS и не перезапускать эффекты
+	const onActivityRef = useRef(onActivity)
+	useEffect(() => {
+		onActivityRef.current = onActivity
+	}, [onActivity])
+
+	// беседа открыта — считаем прочитанной
+	useEffect(() => {
+		markRead(token, conversationId).then(() => onActivityRef.current?.())
+	}, [token, conversationId])
 
 	useEffect(() => {
 		fetchMessages(token, conversationId).then(page => {
@@ -56,6 +75,10 @@ export function ChatWindow({
 		const ws = connectAdminWs(token, (msg: Message) => {
 			if (msg.conversationId === conversationId) {
 				setMessages(prev => [...prev, msg])
+				// открытая беседа: новое сообщение посетителя сразу считаем прочитанным
+				if (msg.sender === 'visitor') {
+					markRead(token, conversationId).then(() => onActivityRef.current?.())
+				}
 			}
 		})
 		wsRef.current = ws
@@ -76,6 +99,7 @@ export function ChatWindow({
 			}
 		]) // optimistic
 		setInput('')
+		onActivityRef.current?.()
 	}
 
 	async function toggleStatus() {

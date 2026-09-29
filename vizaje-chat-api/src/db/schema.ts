@@ -24,6 +24,8 @@ export const conversations = pgTable('conversations', {
 	id: serial('id').primaryKey(),
 	sessionId: text('session_id').notNull().unique(), // анонимный ID посетителя с сайта
 	status: conversationStatus('status').default('open').notNull(),
+	// когда оператор в последний раз открывал беседу; от него считаются непрочитанные
+	adminLastReadAt: timestamp('admin_last_read_at'),
 	createdAt: timestamp('created_at').defaultNow().notNull()
 })
 

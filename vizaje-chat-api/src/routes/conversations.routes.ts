@@ -3,6 +3,7 @@ import { verifyToken } from '../auth/guard'
 import {
 	getConversations,
 	getMessages,
+	markConversationRead,
 	updateConversationStatus
 } from '../chat/service'
 
@@ -11,14 +12,35 @@ const messagesQuery = t.Object({
 	before: t.Optional(t.Numeric())
 })
 
+const conversationsQuery = t.Object({
+	limit: t.Optional(t.Numeric()),
+	offset: t.Optional(t.Numeric())
+})
+
 export const conversationsRoutes = new Elysia()
-	.get('/admin/conversations', async ({ headers, set }) => {
+	.get(
+		'/admin/conversations',
+		async ({ headers, query, set }) => {
+			const admin = verifyToken(headers.authorization)
+			if (!admin) {
+				set.status = 401
+				return { error: 'Unauthorized' }
+			}
+			return getConversations(query)
+		},
+		{ query: conversationsQuery }
+	)
+	.post('/admin/conversations/:id/read', async ({ headers, params, set }) => {
 		const admin = verifyToken(headers.authorization)
 		if (!admin) {
 			set.status = 401
 			return { error: 'Unauthorized' }
 		}
-		return getConversations()
+		if (!(await markConversationRead(Number(params.id)))) {
+			set.status = 404
+			return { error: 'Conversation not found' }
+		}
+		return { ok: true }
 	})
 	.get(
 		'/admin/conversations/:id/messages',
