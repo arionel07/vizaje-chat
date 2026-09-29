@@ -21,3 +21,6 @@ export const ALLOWED_ORIGINS = (
 
 // true, если сервис стоит за reverse proxy, который выставляет X-Forwarded-For
 export const TRUST_PROXY = process.env.TRUST_PROXY === 'true'
+
+// порт HTTP/WS сервера
+export const PORT = Number(process.env.PORT ?? 3001)

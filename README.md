@@ -97,12 +97,29 @@ bun run dev --port 8080    # порт по умолчанию 8080
 | `JWT_SECRET` | да | — | Секрет подписи JWT; без него сервер не стартует |
 | `ALLOWED_ORIGINS` | нет | `http://localhost:5173,http://localhost:8080` | Origins для CORS через запятую. Добавьте сюда домен сайта с виджетом и домен админки |
 | `TRUST_PROXY` | нет | `false` | `true`, если API за reverse proxy: IP клиента берётся из `X-Forwarded-For` (нужно для rate-limit) |
+| `PORT` | нет | `3001` | Порт HTTP/WS сервера |
 
 ### Админка (`vizaje-chat-admin/.env`)
 
 | Переменная | Обязательна | По умолчанию | Что делает |
 |---|---|---|---|
 | `VITE_API_URL` | нет | `http://localhost:3001` | Адрес API; адрес WebSocket строится из него. Подставляется при сборке |
+
+## Автотесты
+
+Тесты API (`bun test`) поднимают приложение на случайном порту и работают с **отдельной** тестовой БД: перед каждым файлом они очищают таблицы, поэтому имя БД обязано содержать `test`, иначе тесты не запустятся.
+
+```bash
+cd vizaje-chat-api
+docker exec vizaje-chat-db createdb -U postgres vizaje_chat_test     # один раз
+export TEST_DATABASE_URL=postgres://postgres:dev@localhost:5433/vizaje_chat_test
+DATABASE_URL=$TEST_DATABASE_URL bunx drizzle-kit push                # схема в тестовой БД
+bun test
+```
+
+Покрыто: разделение токенов по `type`, rate-limit (вход, сессии, сообщения), REST и пагинация виджета, список бесед (сортировка, фильтры, счётчики, прочитанность), валидация WS-сообщений и `clientId` в ошибках, доставка сообщений и системных событий в реальном времени.
+
+В CI (`.github/workflows/ci.yml`) на каждый pull request: typecheck и тесты API с Postgres, lint и сборка админки, проверка синтаксиса виджета.
 
 ## Тест realtime без фронта
 

@@ -10,7 +10,7 @@ export function createLimiter(windowMs: number, max: number) {
 		}
 	}, windowMs).unref()
 
-	return function allow(key: string | number): boolean {
+	function allow(key: string | number): boolean {
 		const now = Date.now()
 		const recent = (hits.get(key) ?? []).filter(t => now - t < windowMs)
 		if (recent.length >= max) {
@@ -21,6 +21,16 @@ export function createLimiter(windowMs: number, max: number) {
 		hits.set(key, recent)
 		return true
 	}
+
+	// для тестов: сбросить все счётчики
+	allow.reset = () => hits.clear()
+	return allow
+}
+
+export function resetRateLimits() {
+	allowVisitorMessage.reset()
+	allowLoginAttempt.reset()
+	allowSessionCreate.reset()
 }
 
 // сообщения посетителя: 5 за 10 секунд на беседу
