@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
 	fetchMessages,
 	markRead,
 	MESSAGES_PAGE_SIZE,
 	updateStatus
 } from '../lib/api'
-import { connectAdminWs } from '../lib/ws'
+import { connectAdminWs, type AdminWs } from '../lib/ws'
 
 type Message = {
 	id: number
@@ -26,7 +26,7 @@ export function ChatWindow({
 }) {
 	const [messages, setMessages] = useState<Message[]>([])
 	const [input, setInput] = useState('')
-	const wsRef = useRef<WebSocket | null>(null)
+	const wsRef = useRef<AdminWs | null>(null)
 	const [status, setStatus] = useState<'open' | 'closed'>('open')
 	const [hasMore, setHasMore] = useState(false)
 	const [loadingMore, setLoadingMore] = useState(false)
@@ -39,17 +39,32 @@ export function ChatWindow({
 		onActivityRef.current = onActivity
 	}, [onActivity])
 
-	// беседа открыта — считаем прочитанной
-	useEffect(() => {
-		markRead(token, conversationId).then(() => onActivityRef.current?.())
+	// помечает беседу прочитанной и просит обновить список; сбой сети не критичен
+	const syncRead = useCallback(() => {
+		markRead(token, conversationId)
+			.then(() => onActivityRef.current?.())
+			.catch(() => {})
 	}, [token, conversationId])
 
+	// беседа открыта — считаем прочитанной
 	useEffect(() => {
-		fetchMessages(token, conversationId).then(page => {
-			setMessages(page)
-			setHasMore(page.length === MESSAGES_PAGE_SIZE)
-		})
-	}, [conversationId, token])
+		syncRead()
+	}, [syncRead])
+
+	// последняя страница истории; заменяет показанные сообщения
+	const applyLatest = useCallback((page: Message[]) => {
+		setMessages(page)
+		setHasMore(page.length === MESSAGES_PAGE_SIZE)
+	}, [])
+
+	const loadLatest = useCallback(
+		() => fetchMessages(token, conversationId).then(applyLatest),
+		[token, conversationId, applyLatest]
+	)
+
+	useEffect(() => {
+		fetchMessages(token, conversationId).then(applyLatest).catch(() => {})
+	}, [token, conversationId, applyLatest])
 
 	async function loadOlder() {
 		// самое старое сообщение — первое; оптимистичные (Date.now()) добавляются в конец
@@ -72,23 +87,32 @@ export function ChatWindow({
 	}
 
 	useEffect(() => {
-		const ws = connectAdminWs(token, (msg: Message) => {
-			if (msg.conversationId === conversationId) {
-				setMessages(prev => [...prev, msg])
-				// открытая беседа: новое сообщение посетителя сразу считаем прочитанным
-				if (msg.sender === 'visitor') {
-					markRead(token, conversationId).then(() => onActivityRef.current?.())
+		const ws = connectAdminWs(
+			token,
+			(msg: Message) => {
+				if (msg.conversationId === conversationId) {
+					setMessages(prev => [...prev, msg])
+					// открытая беседа: новое сообщение посетителя сразу считаем прочитанным
+					if (msg.sender === 'visitor') {
+						syncRead()
+					}
 				}
+			},
+			// после обрыва могли быть пропущены сообщения — подтягиваем историю заново
+			() => {
+				loadLatest().catch(() => {})
+				syncRead()
 			}
-		})
+		)
 		wsRef.current = ws
 		return () => ws.close()
-	}, [token, conversationId])
+	}, [token, conversationId, loadLatest, syncRead])
 
 	function sendMessage() {
 		const text = input.trim()
 		if (!text || !wsRef.current) return
-		wsRef.current.send(JSON.stringify({ conversationId, text }))
+		// нет соединения — не теряем текст и не рисуем «отправленное» сообщение
+		if (!wsRef.current.send(JSON.stringify({ conversationId, text }))) return
 		setMessages(prev => [
 			...prev,
 			{

@@ -1,11 +1,17 @@
 import { API_URL } from './config'
 
+export class UnauthorizedError extends Error {
+	constructor() {
+		super('Unauthorized')
+	}
+}
+
 // токен протух или невалиден — сбрасываем и выкидываем на логин-форму
 function handleUnauthorized(res: Response) {
 	if (res.status !== 401) return
 	localStorage.removeItem('admin_token')
 	window.location.reload()
-	throw new Error('Unauthorized')
+	throw new UnauthorizedError()
 }
 
 export async function login(email: string, password: string) {
@@ -43,6 +49,15 @@ export async function fetchConversations(
 	})
 	handleUnauthorized(res)
 	return res.json() as Promise<Conversation[]>
+}
+
+// проверяет, что токен ещё действителен; при 401 — выход на логин.
+// Сетевые ошибки (сервер недоступен) пробрасываются как есть
+export async function checkSession(token: string) {
+	const res = await fetch(`${API_URL}/admin/auth/me`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
 }
 
 export async function markRead(token: string, conversationId: number) {

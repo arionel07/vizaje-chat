@@ -43,16 +43,16 @@ export function ConversationList({
 	// несколько событий подряд (или отправка своего сообщения) — одна перезагрузка
 	const scheduleReload = useCallback(() => {
 		clearTimeout(timerRef.current)
-		timerRef.current = setTimeout(reload, 250)
+		timerRef.current = setTimeout(() => reload().catch(() => {}), 250)
 	}, [reload])
 
 	useEffect(() => {
-		reload()
+		reload().catch(() => {})
 	}, [reload, refreshKey])
 
 	// любое новое сообщение (admin:global) обновляет превью и счётчики
 	useEffect(() => {
-		const ws = connectAdminWs(token, scheduleReload)
+		const ws = connectAdminWs(token, scheduleReload, scheduleReload)
 		return () => {
 			clearTimeout(timerRef.current)
 			ws.close()
