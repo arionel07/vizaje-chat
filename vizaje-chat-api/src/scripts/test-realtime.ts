@@ -6,7 +6,10 @@ async function main() {
 	const sessionRes = await fetch(`${API_URL}/widget/session`, {
 		method: 'POST'
 	})
-	const { token: visitorToken, conversationId } = await sessionRes.json()
+	const { token: visitorToken, conversationId } = (await sessionRes.json()) as {
+		token: string
+		conversationId: number
+	}
 	console.log('✅ visitor session created, conversationId:', conversationId)
 
 	// 2. Логинимся как админ
@@ -18,7 +21,9 @@ async function main() {
 			password: 'твой_пароль182006'
 		})
 	})
-	const { token: adminToken } = await loginRes.json()
+	const { token: adminToken } = (await loginRes.json()) as {
+		token: string
+	}
 	console.log('✅ admin logged in')
 
 	// 3. Коннектим оба сокета

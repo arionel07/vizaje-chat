@@ -11,6 +11,7 @@ export async function createSession() {
 		.insert(conversations)
 		.values({ sessionId })
 		.returning()
+	if (!conversation) throw new Error('Failed to create conversation')
 
 	const token = jwt.sign(
 		{ type: 'visitor', sessionId, conversationId: conversation.id },
