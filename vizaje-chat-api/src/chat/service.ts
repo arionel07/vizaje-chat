@@ -7,6 +7,17 @@ export async function addMessage(
 	sender: 'visitor' | 'admin' | 'bot',
 	text: string
 ) {
+	// посетитель пишет в закрытую беседу — открываем её заново
+	if (sender === 'visitor') {
+		const [conversation] = await db
+			.select({ status: conversations.status })
+			.from(conversations)
+			.where(eq(conversations.id, conversationId))
+		if (conversation?.status === 'closed') {
+			await updateConversationStatus(conversationId, 'open')
+		}
+	}
+
 	const [message] = await db
 		.insert(messages)
 		.values({ conversationId, sender, text })
