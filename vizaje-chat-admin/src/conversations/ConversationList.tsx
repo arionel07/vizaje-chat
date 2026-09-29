@@ -76,17 +76,8 @@ export function ConversationList({
 	}
 
 	return (
-		<div
-			style={{ width: 280, borderRight: '1px solid #eee', overflowY: 'auto' }}
-		>
-			<div
-				style={{
-					padding: 12,
-					borderBottom: '1px solid #eee',
-					display: 'flex',
-					justifyContent: 'space-between'
-				}}
-			>
+		<div className="w-[280px] [border-right:1px_solid_#eee] overflow-y-auto">
+			<div className="p-[12px] [border-bottom:1px_solid_#eee] flex justify-between">
 				<span>Беседы</span>
 				<button onClick={onLogout}>Выйти</button>
 			</div>
@@ -96,50 +87,29 @@ export function ConversationList({
 					<div
 						key={c.id}
 						onClick={() => onSelect(c.id)}
-						style={{
-							padding: 12,
-							cursor: 'pointer',
-							background: c.id === selectedId ? '#f1f1f1' : 'transparent'
-						}}
+						className={`p-[12px] cursor-pointer ${
+							c.id === selectedId ? 'bg-[#f1f1f1]' : 'bg-transparent'
+						}`}
 					>
 						<div
-							style={{
-								display: 'flex',
-								justifyContent: 'space-between',
-								fontWeight: unread ? 600 : 400
-							}}
+							className={`flex justify-between ${
+								unread ? 'font-semibold' : 'font-normal'
+							}`}
 						>
 							<span>
 								Беседа #{c.id}{' '}
-								<span style={{ color: '#888', fontSize: 12, fontWeight: 400 }}>
+								<span className="text-[#888] text-[12px] font-normal">
 									({c.status})
 								</span>
 							</span>
 							{unread > 0 && (
-								<span
-									style={{
-										background: '#e11d48',
-										color: '#fff',
-										borderRadius: 10,
-										padding: '0 7px',
-										fontSize: 12
-									}}
-								>
+								<span className="bg-[#e11d48] text-[#fff] rounded-[10px] px-[7px] py-0 text-[12px]">
 									{unread}
 								</span>
 							)}
 						</div>
 						{c.lastMessageText && (
-							<div
-								style={{
-									color: '#888',
-									fontSize: 12,
-									marginTop: 4,
-									whiteSpace: 'nowrap',
-									overflow: 'hidden',
-									textOverflow: 'ellipsis'
-								}}
-							>
+							<div className="text-[#888] text-[12px] mt-[4px] whitespace-nowrap overflow-hidden text-ellipsis">
 								{c.lastMessageSender === 'admin' && 'Вы: '}
 								{c.lastMessageText}
 							</div>
@@ -148,7 +118,7 @@ export function ConversationList({
 				)
 			})}
 			{hasMore && (
-				<div style={{ textAlign: 'center', padding: 12 }}>
+				<div className="text-center p-[12px]">
 					<button onClick={loadMore} disabled={loadingMore}>
 						{loadingMore ? 'Загрузка...' : 'Загрузить ещё'}
 					</button>

@@ -18,7 +18,7 @@ function App() {
 	}
 
 	return (
-		<div style={{ display: 'flex', height: '100vh' }}>
+		<div className="flex h-screen">
 			<ConversationList
 				token={token}
 				onSelect={setSelectedId}
@@ -26,7 +26,7 @@ function App() {
 				refreshKey={refreshKey}
 				onLogout={logout}
 			/>
-			<div style={{ flex: 1 }}>
+			<div className="flex-1">
 				{selectedId ? (
 					<ChatWindow
 							token={token}
@@ -34,7 +34,7 @@ function App() {
 							onActivity={() => setRefreshKey(k => k + 1)}
 						/>
 				) : (
-					<div style={{ padding: 16 }}>Выбери беседу слева</div>
+					<div className="p-[16px]">Выбери беседу слева</div>
 				)}
 			</div>
 		</div>

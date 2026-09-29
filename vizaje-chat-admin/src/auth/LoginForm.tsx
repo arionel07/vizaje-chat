@@ -36,7 +36,7 @@ export function LoginForm({
 				placeholder="Пароль"
 			/>
 			<button type="submit">Войти</button>
-			{error && <p style={{ color: 'red' }}>{error}</p>}
+			{error && <p className="text-[red]">{error}</p>}
 		</form>
 	)
 }

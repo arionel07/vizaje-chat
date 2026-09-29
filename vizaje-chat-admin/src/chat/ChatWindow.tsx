@@ -133,23 +133,16 @@ export function ChatWindow({
 	}
 
 	return (
-		<div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-			<div
-				style={{
-					padding: 12,
-					borderBottom: '1px solid #eee',
-					display: 'flex',
-					justifyContent: 'space-between'
-				}}
-			>
+		<div className="flex flex-col h-full">
+			<div className="p-[12px] [border-bottom:1px_solid_#eee] flex justify-between">
 				<span>Беседа #{conversationId}</span>
 				<button onClick={toggleStatus}>
 					{status === 'open' ? 'Закрыть беседу' : 'Открыть заново'}
 				</button>
 			</div>
-			<div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+			<div ref={listRef} className="flex-1 overflow-y-auto p-[16px]">
 				{hasMore && (
-					<div style={{ textAlign: 'center', marginBottom: 8 }}>
+					<div className="text-center mb-[8px]">
 						<button onClick={loadOlder} disabled={loadingMore}>
 							{loadingMore ? 'Загрузка...' : 'Загрузить ещё'}
 						</button>
@@ -159,31 +152,23 @@ export function ChatWindow({
 					m.sender === 'system' ? (
 						<div
 							key={m.id}
-							style={{
-								textAlign: 'center',
-								color: '#888',
-								fontSize: 12,
-								margin: '12px 0'
-							}}
+							className="text-center text-[#888] text-[12px] my-[12px]"
 						>
 							{m.text}
 						</div>
 					) : (
 						<div
 							key={m.id}
-							style={{
-								textAlign: m.sender === 'admin' ? 'right' : 'left',
-								margin: '8px 0'
-							}}
+							className={`my-[8px] ${
+								m.sender === 'admin' ? 'text-right' : 'text-left'
+							}`}
 						>
 							<span
-								style={{
-									display: 'inline-block',
-									padding: '8px 12px',
-									borderRadius: 12,
-									background: m.sender === 'admin' ? '#111' : '#f1f1f1',
-									color: m.sender === 'admin' ? '#fff' : '#111'
-								}}
+								className={`inline-block px-[12px] py-[8px] rounded-[12px] ${
+									m.sender === 'admin'
+										? 'bg-[#111] text-[#fff]'
+										: 'bg-[#f1f1f1] text-[#111]'
+								}`}
 							>
 								{m.text}
 							</span>
@@ -192,31 +177,17 @@ export function ChatWindow({
 				)}
 			</div>
 			{status === 'closed' && (
-				<div
-					style={{
-						textAlign: 'center',
-						color: '#888',
-						fontSize: 12,
-						margin: '12px 0'
-					}}
-				>
+				<div className="text-center text-[#888] text-[12px] my-[12px]">
 					Беседа закрыта
 				</div>
 			)}
-			<div
-				style={{
-					display: 'flex',
-					padding: 12,
-					borderTop: '1px solid #eee',
-					gap: 8
-				}}
-			>
+			<div className="flex p-[12px] [border-top:1px_solid_#eee] gap-[8px]">
 				<input
 					value={input}
 					onChange={e => setInput(e.target.value)}
 					onKeyDown={e => e.key === 'Enter' && sendMessage()}
 					placeholder="Ответ..."
-					style={{ flex: 1 }}
+					className="flex-1"
 				/>
 				<button onClick={sendMessage}>Отправить</button>
 			</div>
