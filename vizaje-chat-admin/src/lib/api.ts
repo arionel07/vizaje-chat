@@ -1,5 +1,13 @@
 const API_URL = 'http://localhost:3001'
 
+// токен протух или невалиден — сбрасываем и выкидываем на логин-форму
+function handleUnauthorized(res: Response) {
+	if (res.status !== 401) return
+	localStorage.removeItem('admin_token')
+	window.location.reload()
+	throw new Error('Unauthorized')
+}
+
 export async function login(email: string, password: string) {
 	const res = await fetch(`${API_URL}/admin/auth/login`, {
 		method: 'POST',
@@ -13,11 +21,7 @@ export async function fetchConversations(token: string) {
 	const res = await fetch(`${API_URL}/admin/conversations`, {
 		headers: { Authorization: `Bearer ${token}` }
 	})
-	if (res.status === 401) {
-		localStorage.removeItem('admin_token')
-		window.location.reload() // выкинет на логин-форму
-		throw new Error('Unauthorized')
-	}
+	handleUnauthorized(res)
 	return res.json()
 }
 
@@ -28,6 +32,7 @@ export async function fetchMessages(token: string, conversationId: number) {
 			headers: { Authorization: `Bearer ${token}` }
 		}
 	)
+	handleUnauthorized(res)
 	return res.json() as Promise<
 		Array<{ id: number; sender: string; text: string; createdAt: string }>
 	>
@@ -49,5 +54,6 @@ export async function updateStatus(
 			body: JSON.stringify({ status })
 		}
 	)
+	handleUnauthorized(res)
 	return res.json()
 }
