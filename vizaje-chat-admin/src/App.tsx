@@ -7,6 +7,12 @@ function App() {
 	const [selectedId, setSelectedId] = useState<number | null>(null)
 	const [refreshKey, setRefreshKey] = useState(0)
 
+	function logout() {
+		localStorage.removeItem('admin_token')
+		setSelectedId(null)
+		setToken(null)
+	}
+
 	if (!token) {
 		return <LoginForm onSuccess={setToken} />
 	}
@@ -18,6 +24,7 @@ function App() {
 				onSelect={setSelectedId}
 				selectedId={selectedId}
 				refreshKey={refreshKey}
+				onLogout={logout}
 			/>
 			<div style={{ flex: 1 }}>
 				{selectedId ? (
@@ -29,9 +36,6 @@ function App() {
 				) : (
 					<div style={{ padding: 16 }}>Выбери беседу слева</div>
 				)}
-			</div>
-			<div style={{ flex: 1, padding: 16 }}>
-				{selectedId ? `Выбрана беседа #${selectedId}` : 'Выбери беседу слева'}
 			</div>
 		</div>
 	)

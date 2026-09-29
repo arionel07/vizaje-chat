@@ -12,12 +12,14 @@ export function ConversationList({
 	token,
 	onSelect,
 	selectedId,
-	refreshKey
+	refreshKey,
+	onLogout
 }: {
 	token: string
 	onSelect: (id: number) => void
 	selectedId: number | null
 	refreshKey: number
+	onLogout: () => void
 }) {
 	const [conversations, setConversations] = useState<Conversation[]>([])
 	const [hasMore, setHasMore] = useState(false)
@@ -77,6 +79,17 @@ export function ConversationList({
 		<div
 			style={{ width: 280, borderRight: '1px solid #eee', overflowY: 'auto' }}
 		>
+			<div
+				style={{
+					padding: 12,
+					borderBottom: '1px solid #eee',
+					display: 'flex',
+					justifyContent: 'space-between'
+				}}
+			>
+				<span>Беседы</span>
+				<button onClick={onLogout}>Выйти</button>
+			</div>
 			{conversations.map(c => {
 				const unread = c.id === selectedId ? 0 : c.unreadCount
 				return (
