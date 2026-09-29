@@ -2,8 +2,7 @@ import { randomUUID } from 'crypto'
 import jwt from 'jsonwebtoken'
 import { db } from '../db/client'
 import { conversations } from '../db/schema'
-
-const JWT_SECRET = process.env.JWT_SECRET!
+import { JWT_SECRET } from '../config'
 
 export async function createSession() {
 	const sessionId = randomUUID()

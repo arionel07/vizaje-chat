@@ -1,6 +1,5 @@
 import jwt from 'jsonwebtoken'
-
-const JWT_SECRET = process.env.JWT_SECRET!
+import { JWT_SECRET } from '../config'
 
 export function verifyToken(authHeader?: string) {
 	if (!authHeader?.startsWith('Bearer ')) return null
