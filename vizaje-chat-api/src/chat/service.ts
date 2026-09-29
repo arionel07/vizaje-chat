@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, lt } from 'drizzle-orm'
 import { db } from '../db/client'
 import { conversations, messages } from '../db/schema'
 import { publishMessage } from './events'
@@ -34,11 +34,31 @@ export async function conversationExists(conversationId: number) {
 	return !!row
 }
 
-export async function getMessages(conversationId: number) {
-	return db
+export const DEFAULT_MESSAGES_LIMIT = 50
+export const MAX_MESSAGES_LIMIT = 200
+
+// Последние `limit` сообщений в хронологическом порядке.
+// `before` — id сообщения: вернуть только более старые (для подгрузки истории)
+export async function getMessages(
+	conversationId: number,
+	{ limit, before }: { limit?: number; before?: number } = {}
+) {
+	const size = Math.min(
+		Math.max(Math.trunc(limit ?? DEFAULT_MESSAGES_LIMIT), 1),
+		MAX_MESSAGES_LIMIT
+	)
+	const rows = await db
 		.select()
 		.from(messages)
-		.where(eq(messages.conversationId, conversationId))
+		.where(
+			and(
+				eq(messages.conversationId, conversationId),
+				before ? lt(messages.id, before) : undefined
+			)
+		)
+		.orderBy(desc(messages.id))
+		.limit(size)
+	return rows.reverse()
 }
 
 export async function getConversations() {

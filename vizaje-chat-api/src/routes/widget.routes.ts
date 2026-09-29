@@ -30,11 +30,20 @@ export const widgetRoutes = new Elysia()
 			body: t.Object({ text: t.String() })
 		}
 	)
-	.get('/widget/messages', async ({ headers, set }) => {
-		const session = verifySessionToken(headers.authorization)
-		if (!session) {
-			set.status = 401
-			return { error: 'Unauthorized' }
+	.get(
+		'/widget/messages',
+		async ({ headers, query, set }) => {
+			const session = verifySessionToken(headers.authorization)
+			if (!session) {
+				set.status = 401
+				return { error: 'Unauthorized' }
+			}
+			return getMessages(session.conversationId, query)
+		},
+		{
+			query: t.Object({
+				limit: t.Optional(t.Numeric()),
+				before: t.Optional(t.Numeric())
+			})
 		}
-		return getMessages(session.conversationId)
-	})
+	)

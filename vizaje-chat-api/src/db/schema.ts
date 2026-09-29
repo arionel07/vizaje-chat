@@ -1,4 +1,5 @@
 import {
+	index,
 	integer,
 	pgEnum,
 	pgTable,
@@ -33,12 +34,16 @@ export const senderType = pgEnum('sender_type', [
 	'system'
 ])
 
-export const messages = pgTable('messages', {
-	id: serial('id').primaryKey(),
-	conversationId: integer('conversation_id')
-		.notNull()
-		.references(() => conversations.id),
-	sender: senderType('sender').notNull(),
-	text: text('text').notNull(),
-	createdAt: timestamp('created_at').defaultNow().notNull()
-})
+export const messages = pgTable(
+	'messages',
+	{
+		id: serial('id').primaryKey(),
+		conversationId: integer('conversation_id')
+			.notNull()
+			.references(() => conversations.id),
+		sender: senderType('sender').notNull(),
+		text: text('text').notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull()
+	},
+	t => [index('messages_conversation_id_idx').on(t.conversationId, t.id)]
+)
