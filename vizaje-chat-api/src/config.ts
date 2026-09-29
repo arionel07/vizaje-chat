@@ -7,6 +7,7 @@ function required(name: string): string {
 	return value
 }
 
+export const DATABASE_URL = required('DATABASE_URL')
 export const JWT_SECRET = required('JWT_SECRET')
 
 // Origins, которым разрешён CORS (сайты с виджетом и админка), через запятую
