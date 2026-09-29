@@ -11,6 +11,10 @@ type ConnStore =
 
 const connections = new Map<string, ConnStore>()
 
+// «печатает»: не чаще раза в секунду с соединения, остальное молча отбрасываем
+const TYPING_MIN_INTERVAL_MS = 1000
+const lastTyping = new Map<string, number>()
+
 const MAX_TEXT_LENGTH = 4000
 
 // Elysia парсит JSON-строку в объект сам; невалидный JSON приходит строкой
@@ -37,6 +41,24 @@ function sendError(
 	clientId?: string
 ) {
 	ws.send(JSON.stringify({ type: 'error', error, clientId }))
+}
+
+// Подтверждение отправителю (сам он publish не получает): серверные id и время
+// сообщения нужны для «Прочитано» и для замены оптимистичного сообщения
+function sendAck(
+	ws: { send: (data: string) => unknown },
+	msg: { id: number; conversationId: number; createdAt: Date },
+	clientId?: string
+) {
+	ws.send(
+		JSON.stringify({
+			type: 'sent',
+			clientId,
+			id: msg.id,
+			conversationId: msg.conversationId,
+			createdAt: msg.createdAt
+		})
+	)
 }
 
 export const wsRoutes = new Elysia().ws('/ws', {
@@ -83,6 +105,32 @@ export const wsRoutes = new Elysia().ws('/ws', {
 		const store = connections.get(ws.id)
 		if (!store) return
 
+		// служебное событие «печатает» — не сообщение, в БД не пишется
+		if ((body as { type?: unknown } | null)?.type === 'typing') {
+			const now = Date.now()
+			if (now - (lastTyping.get(ws.id) ?? 0) < TYPING_MIN_INTERVAL_MS) return
+			lastTyping.set(ws.id, now)
+			if (store.type === 'visitor') {
+				ws.publish(
+					'admin:global',
+					JSON.stringify({
+						type: 'typing',
+						from: 'visitor',
+						conversationId: store.conversationId
+					})
+				)
+			} else {
+				const id = (body as { conversationId?: unknown }).conversationId
+				if (typeof id === 'number' && Number.isInteger(id)) {
+					ws.publish(
+						`conversation:${id}`,
+						JSON.stringify({ type: 'typing', from: 'admin', conversationId: id })
+					)
+				}
+			}
+			return
+		}
+
 		const clientId = getClientId(body)
 		const text = parseText(body)
 		if (!text) {
@@ -99,6 +147,7 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			const payload = JSON.stringify(msg)
 			ws.publish(`conversation:${store.conversationId}`, payload)
 			ws.publish('admin:global', payload)
+			sendAck(ws, msg, clientId)
 		}
 
 		if (store.type === 'admin') {
@@ -116,9 +165,11 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			const payload = JSON.stringify(msg)
 			ws.publish(`conversation:${conversationId}`, payload)
 			ws.publish('admin:global', payload)
+			sendAck(ws, msg, clientId)
 		}
 	},
 	close(ws) {
 		connections.delete(ws.id)
+		lastTyping.delete(ws.id)
 	}
 })

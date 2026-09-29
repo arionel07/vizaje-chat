@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { verifyToken } from '../auth/guard'
+import { publishToAdmins, publishToConversation } from '../chat/events'
 import {
 	getConversationCounts,
 	getConversations,
@@ -47,10 +48,21 @@ export const conversationsRoutes = new Elysia()
 			set.status = 401
 			return { error: 'Unauthorized' }
 		}
-		if (!(await markConversationRead(Number(params.id)))) {
+		const conversationId = Number(params.id)
+		const at = await markConversationRead(conversationId)
+		if (!at) {
 			set.status = 404
 			return { error: 'Conversation not found' }
 		}
+		// посетитель увидит «Прочитано», другие операторы обновят счётчики
+		const event = {
+			type: 'read',
+			by: 'admin',
+			conversationId,
+			at: at.toISOString()
+		}
+		publishToConversation(conversationId, event)
+		publishToAdmins(event)
 		return { ok: true }
 	})
 	.get(

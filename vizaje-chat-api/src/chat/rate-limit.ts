@@ -29,12 +29,15 @@ export function createLimiter(windowMs: number, max: number) {
 
 export function resetRateLimits() {
 	allowVisitorMessage.reset()
+	allowVisitorRead.reset()
 	allowLoginAttempt.reset()
 	allowSessionCreate.reset()
 }
 
 // сообщения посетителя: 5 за 10 секунд на беседу
 export const allowVisitorMessage = createLimiter(10_000, 5)
+// отметки «посетитель прочитал»: 30 в минуту на беседу
+export const allowVisitorRead = createLimiter(60_000, 30)
 // попытки входа админа: 10 за 15 минут на IP
 export const allowLoginAttempt = createLimiter(15 * 60_000, 10)
 // создание widget-сессий: 10 в час на IP

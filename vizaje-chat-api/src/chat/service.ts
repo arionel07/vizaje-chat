@@ -23,6 +23,7 @@ export async function addMessage(
 		.insert(messages)
 		.values({ conversationId, sender, text })
 		.returning()
+	if (!message) throw new Error('Failed to insert message')
 	return message
 }
 
@@ -113,6 +114,7 @@ export async function getConversations({
 			sessionId: conversations.sessionId,
 			status: conversations.status,
 			createdAt: conversations.createdAt,
+			visitorLastReadAt: conversations.visitorLastReadAt,
 			lastMessageText: sql<string | null>`(
 				select m.text from messages m
 				where m.conversation_id = ${convId}
@@ -153,13 +155,33 @@ export async function getConversationCounts() {
 	return row ?? { open: 0, closed: 0, unread: 0 }
 }
 
+// Оператор прочитал беседу. Возвращает серверное время отметки, null — беседы нет
 export async function markConversationRead(conversationId: number) {
 	const [row] = await db
 		.update(conversations)
 		.set({ adminLastReadAt: sql`now()` })
 		.where(eq(conversations.id, conversationId))
-		.returning({ id: conversations.id })
-	return !!row
+		.returning({ at: conversations.adminLastReadAt })
+	return row?.at ?? null
+}
+
+// Посетитель увидел сообщения (виджет открыт). Возвращает время отметки
+export async function markVisitorRead(conversationId: number) {
+	const [row] = await db
+		.update(conversations)
+		.set({ visitorLastReadAt: sql`now()` })
+		.where(eq(conversations.id, conversationId))
+		.returning({ at: conversations.visitorLastReadAt })
+	return row?.at ?? null
+}
+
+// когда оператор последний раз читал беседу — виджет показывает «Прочитано»
+export async function getAdminReadAt(conversationId: number) {
+	const [row] = await db
+		.select({ at: conversations.adminLastReadAt })
+		.from(conversations)
+		.where(eq(conversations.id, conversationId))
+	return row?.at ?? null
 }
 
 export async function updateConversationStatus(

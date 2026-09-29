@@ -1,8 +1,17 @@
 import { Elysia, t } from 'elysia'
 import { getClientIp } from '../chat/client-ip'
-import { publishMessage } from '../chat/events'
-import { allowSessionCreate, allowVisitorMessage } from '../chat/rate-limit'
-import { addMessage, getMessages } from '../chat/service'
+import { publishMessage, publishToAdmins } from '../chat/events'
+import {
+	allowSessionCreate,
+	allowVisitorMessage,
+	allowVisitorRead
+} from '../chat/rate-limit'
+import {
+	addMessage,
+	getAdminReadAt,
+	getMessages,
+	markVisitorRead
+} from '../chat/service'
 import { createSession, verifySessionToken } from '../widget/service'
 
 export const widgetRoutes = new Elysia()
@@ -33,6 +42,40 @@ export const widgetRoutes = new Elysia()
 			body: t.Object({ text: t.String() })
 		}
 	)
+	// посетитель увидел сообщения — оператор покажет «Прочитано»
+	.post('/widget/read', async ({ headers, set }) => {
+		const session = verifySessionToken(headers.authorization)
+		if (!session) {
+			set.status = 401
+			return { error: 'Unauthorized' }
+		}
+		if (!allowVisitorRead(session.conversationId)) {
+			set.status = 429
+			return { error: 'Too many requests' }
+		}
+		const at = await markVisitorRead(session.conversationId)
+		if (!at) {
+			set.status = 404
+			return { error: 'Conversation not found' }
+		}
+		publishToAdmins({
+			type: 'read',
+			by: 'visitor',
+			conversationId: session.conversationId,
+			at: at.toISOString()
+		})
+		return { ok: true }
+	})
+	// когда оператор в последний раз читал беседу — для «Прочитано» в виджете
+	.get('/widget/state', async ({ headers, set }) => {
+		const session = verifySessionToken(headers.authorization)
+		if (!session) {
+			set.status = 401
+			return { error: 'Unauthorized' }
+		}
+		const at = await getAdminReadAt(session.conversationId)
+		return { adminLastReadAt: at ? at.toISOString() : null }
+	})
 	.get(
 		'/widget/messages',
 		async ({ headers, query, set }) => {

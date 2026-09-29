@@ -26,6 +26,8 @@ export const conversations = pgTable('conversations', {
 	status: conversationStatus('status').default('open').notNull(),
 	// когда оператор в последний раз открывал беседу; от него считаются непрочитанные
 	adminLastReadAt: timestamp('admin_last_read_at'),
+	// когда посетитель в последний раз видел сообщения (виджет открыт); для «Прочитано»
+	visitorLastReadAt: timestamp('visitor_last_read_at'),
 	createdAt: timestamp('created_at').defaultNow().notNull()
 })
 

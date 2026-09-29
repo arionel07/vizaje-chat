@@ -32,7 +32,9 @@ describe('обмен сообщениями', () => {
 		})
 		await tab2.waitFor(m => m.text === 'привет')
 		await sleep(150)
-		expect(tab1.messages).toHaveLength(0) // ws.publish не шлёт отправителю
+		// ws.publish не шлёт отправителю сообщение; приходит только подтверждение sent
+		expect(tab1.messages.filter(m => m.sender)).toHaveLength(0)
+		expect(tab1.messages.filter(m => m.type === 'sent')).toHaveLength(1)
 		expect(visitor.messages.filter(m => m.text === 'привет')).toHaveLength(1)
 
 		;[visitor, tab1, tab2].forEach(c => c.close())
