@@ -64,23 +64,42 @@ export async function getMessages(
 export const DEFAULT_CONVERSATIONS_LIMIT = 30
 export const MAX_CONVERSATIONS_LIMIT = 100
 
+// Drizzle в подзапросах выводит колонки без имени таблицы ("id"), и они
+// склеиваются с messages.id — поэтому внешние колонки квалифицируем вручную
+const convId = sql`"conversations"."id"`
+const convCreatedAt = sql`"conversations"."created_at"`
+const convReadAt = sql`"conversations"."admin_last_read_at"`
+
+// число непрочитанных оператором сообщений посетителя в беседе
+const unreadCountExpr = () => sql`(
+	select count(*)::int from messages m
+	where m.conversation_id = ${convId}
+		and m.sender = 'visitor'
+		and (
+			${convReadAt} is null
+			or m.created_at > ${convReadAt}
+		)
+)`
+
 // Беседы, отсортированные по последней активности, с последним сообщением
-// и числом непрочитанных сообщений посетителя
+// и числом непрочитанных сообщений посетителя.
+// status — только открытые/закрытые; unread — только с непрочитанными
 export async function getConversations({
 	limit,
-	offset
-}: { limit?: number; offset?: number } = {}) {
+	offset,
+	status,
+	unread
+}: {
+	limit?: number
+	offset?: number
+	status?: 'open' | 'closed'
+	unread?: boolean
+} = {}) {
 	const size = Math.min(
 		Math.max(Math.trunc(limit ?? DEFAULT_CONVERSATIONS_LIMIT), 1),
 		MAX_CONVERSATIONS_LIMIT
 	)
 	const skip = Math.max(Math.trunc(offset ?? 0), 0)
-
-	// Drizzle в подзапросах выводит колонки без имени таблицы ("id"), и они
-	// склеиваются с messages.id — поэтому внешние колонки квалифицируем вручную
-	const convId = sql`"conversations"."id"`
-	const convCreatedAt = sql`"conversations"."created_at"`
-	const convReadAt = sql`"conversations"."admin_last_read_at"`
 
 	const lastAt = () => sql`(
 		select m.created_at from messages m
@@ -105,23 +124,33 @@ export async function getConversations({
 				order by m.id desc limit 1
 			)`,
 			lastMessageAt: sql<Date | null>`${lastAt()}`.mapWith(conversations.createdAt),
-			unreadCount: sql<number>`(
-				select count(*)::int from messages m
-				where m.conversation_id = ${convId}
-					and m.sender = 'visitor'
-					and (
-						${convReadAt} is null
-						or m.created_at > ${convReadAt}
-					)
-			)`
+			unreadCount: sql<number>`${unreadCountExpr()}`
 		})
 		.from(conversations)
+		.where(
+			and(
+				status ? eq(conversations.status, status) : undefined,
+				unread ? sql`${unreadCountExpr()} > 0` : undefined
+			)
+		)
 		.orderBy(
 			desc(sql`coalesce(${lastAt()}, ${convCreatedAt})`),
 			desc(conversations.id)
 		)
 		.limit(size)
 		.offset(skip)
+}
+
+// счётчики для фильтров: открытые, закрытые, с непрочитанными
+export async function getConversationCounts() {
+	const [row] = await db
+		.select({
+			open: sql<number>`(count(*) filter (where "conversations"."status" = 'open'))::int`,
+			closed: sql<number>`(count(*) filter (where "conversations"."status" = 'closed'))::int`,
+			unread: sql<number>`(count(*) filter (where ${unreadCountExpr()} > 0))::int`
+		})
+		.from(conversations)
+	return row ?? { open: 0, closed: 0, unread: 0 }
 }
 
 export async function markConversationRead(conversationId: number) {

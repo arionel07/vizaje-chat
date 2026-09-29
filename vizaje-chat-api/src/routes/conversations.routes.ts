@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia'
 import { verifyToken } from '../auth/guard'
 import {
+	getConversationCounts,
 	getConversations,
 	getMessages,
 	markConversationRead,
@@ -14,7 +15,9 @@ const messagesQuery = t.Object({
 
 const conversationsQuery = t.Object({
 	limit: t.Optional(t.Numeric()),
-	offset: t.Optional(t.Numeric())
+	offset: t.Optional(t.Numeric()),
+	status: t.Optional(t.Union([t.Literal('open'), t.Literal('closed')])),
+	unread: t.Optional(t.BooleanString())
 })
 
 export const conversationsRoutes = new Elysia()
@@ -30,6 +33,14 @@ export const conversationsRoutes = new Elysia()
 		},
 		{ query: conversationsQuery }
 	)
+	.get('/admin/conversations/counts', async ({ headers, set }) => {
+		const admin = verifyToken(headers.authorization)
+		if (!admin) {
+			set.status = 401
+			return { error: 'Unauthorized' }
+		}
+		return getConversationCounts()
+	})
 	.post('/admin/conversations/:id/read', async ({ headers, params, set }) => {
 		const admin = verifyToken(headers.authorization)
 		if (!admin) {
