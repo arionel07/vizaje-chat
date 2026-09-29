@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { fetchMessages, updateStatus } from '../lib/api'
+import { fetchMessages, MESSAGES_PAGE_SIZE, updateStatus } from '../lib/api'
 import { connectAdminWs } from '../lib/ws'
 
 type Message = {
@@ -21,10 +21,36 @@ export function ChatWindow({
 	const [input, setInput] = useState('')
 	const wsRef = useRef<WebSocket | null>(null)
 	const [status, setStatus] = useState<'open' | 'closed'>('open')
+	const [hasMore, setHasMore] = useState(false)
+	const [loadingMore, setLoadingMore] = useState(false)
+	const listRef = useRef<HTMLDivElement | null>(null)
 
 	useEffect(() => {
-		fetchMessages(token, conversationId).then(setMessages)
+		fetchMessages(token, conversationId).then(page => {
+			setMessages(page)
+			setHasMore(page.length === MESSAGES_PAGE_SIZE)
+		})
 	}, [conversationId, token])
+
+	async function loadOlder() {
+		// самое старое сообщение — первое; оптимистичные (Date.now()) добавляются в конец
+		const oldest = messages[0]
+		if (!oldest || loadingMore) return
+		setLoadingMore(true)
+		try {
+			const older = await fetchMessages(token, conversationId, oldest.id)
+			const list = listRef.current
+			const prevHeight = list?.scrollHeight ?? 0
+			setMessages(prev => [...older, ...prev])
+			setHasMore(older.length === MESSAGES_PAGE_SIZE)
+			// после рендера сохраняем позицию прокрутки, чтобы список не «прыгал»
+			requestAnimationFrame(() => {
+				if (list) list.scrollTop += list.scrollHeight - prevHeight
+			})
+		} finally {
+			setLoadingMore(false)
+		}
+	}
 
 	useEffect(() => {
 		const ws = connectAdminWs(token, (msg: Message) => {
@@ -73,7 +99,14 @@ export function ChatWindow({
 					{status === 'open' ? 'Закрыть беседу' : 'Открыть заново'}
 				</button>
 			</div>
-			<div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+			<div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+				{hasMore && (
+					<div style={{ textAlign: 'center', marginBottom: 8 }}>
+						<button onClick={loadOlder} disabled={loadingMore}>
+							{loadingMore ? 'Загрузка...' : 'Загрузить ещё'}
+						</button>
+					</div>
+				)}
 				{messages.map(m =>
 					m.sender === 'system' ? (
 						<div

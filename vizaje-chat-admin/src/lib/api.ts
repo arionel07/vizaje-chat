@@ -25,9 +25,18 @@ export async function fetchConversations(token: string) {
 	return res.json()
 }
 
-export async function fetchMessages(token: string, conversationId: number) {
+export const MESSAGES_PAGE_SIZE = 50
+
+// before — id самого старого загруженного сообщения (подгрузка более ранних)
+export async function fetchMessages(
+	token: string,
+	conversationId: number,
+	before?: number
+) {
+	const params = new URLSearchParams({ limit: String(MESSAGES_PAGE_SIZE) })
+	if (before) params.set('before', String(before))
 	const res = await fetch(
-		`${API_URL}/admin/conversations/${conversationId}/messages`,
+		`${API_URL}/admin/conversations/${conversationId}/messages?${params}`,
 		{
 			headers: { Authorization: `Bearer ${token}` }
 		}

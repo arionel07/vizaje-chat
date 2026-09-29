@@ -24,6 +24,7 @@
   .msg.visitor { align-self: flex-end; background: #111; color: #fff; }
   .msg.admin, .msg.bot { align-self: flex-start; background: #f1f1f1; color: #111; }
   .msg.visitor.failed { background: #fff; color: #c0392b; border: 1px solid #c0392b; }
+  .load-more { align-self: center; background: none; border: none; color: #888; font-size: 12px; cursor: pointer; padding: 4px 8px; }
   .msg.system { align-self: center; background: none; color: #888; font-size: 12px; }
   #chat-input-row { display: flex; padding: 12px; border-top: 1px solid #eee; gap: 8px; }
   #chat-input { flex: 1; border: 1px solid #ddd; border-radius: 20px; padding: 10px 14px; font-size: 14px; outline: none; }
@@ -55,12 +56,36 @@
 	let starting = false
 	let reconnectDelay = 1000
 
-	function renderMessage(sender, text) {
+	const PAGE_SIZE = 50
+	let oldestId = null
+	let hasMore = false
+
+	const loadMoreBtn = document.createElement('button')
+	loadMoreBtn.className = 'load-more'
+	loadMoreBtn.textContent = 'Загрузить ещё'
+
+	function updateLoadMore() {
+		if (hasMore) {
+			if (!loadMoreBtn.isConnected) messagesEl.prepend(loadMoreBtn)
+		} else {
+			loadMoreBtn.remove()
+		}
+	}
+
+	function renderMessage(sender, text, prepend = false) {
 		const div = document.createElement('div')
 		div.className = `msg ${sender}`
 		div.textContent = text
-		messagesEl.appendChild(div)
-		messagesEl.scrollTop = messagesEl.scrollHeight
+		if (prepend) {
+			// старые сообщения идут сразу под кнопкой «Загрузить ещё»
+			messagesEl.insertBefore(
+				div,
+				loadMoreBtn.isConnected ? loadMoreBtn.nextSibling : messagesEl.firstChild
+			)
+		} else {
+			messagesEl.appendChild(div)
+			messagesEl.scrollTop = messagesEl.scrollHeight
+		}
 		return div
 	}
 
@@ -101,10 +126,16 @@
 		return token
 	}
 
-	async function loadHistory() {
-		const res = await fetch(`${API_URL}/widget/messages`, {
+	function fetchHistoryPage(before) {
+		const params = new URLSearchParams({ limit: PAGE_SIZE })
+		if (before) params.set('before', before)
+		return fetch(`${API_URL}/widget/messages?${params}`, {
 			headers: { Authorization: `Bearer ${token}` }
 		})
+	}
+
+	async function loadHistory() {
+		const res = await fetchHistoryPage()
 		if (res.status === 401) {
 			// токен протух или не признан сервером — начинаем новую сессию
 			resetSession()
@@ -114,6 +145,32 @@
 		const messages = await res.json()
 		messagesEl.textContent = ''
 		messages.forEach(m => renderMessage(m.sender, m.text))
+		oldestId = messages[0]?.id ?? null
+		hasMore = messages.length === PAGE_SIZE
+		updateLoadMore()
+	}
+
+	async function loadOlder() {
+		if (!hasMore || !oldestId) return
+		loadMoreBtn.disabled = true
+		try {
+			const res = await fetchHistoryPage(oldestId)
+			if (!res.ok) return
+			const older = await res.json()
+			const prevHeight = messagesEl.scrollHeight
+			// вставляем с конца, чтобы порядок остался хронологическим
+			for (let i = older.length - 1; i >= 0; i--) {
+				renderMessage(older[i].sender, older[i].text, true)
+			}
+			messagesEl.scrollTop += messagesEl.scrollHeight - prevHeight
+			oldestId = older[0]?.id ?? oldestId
+			hasMore = older.length === PAGE_SIZE
+			updateLoadMore()
+		} catch (e) {
+			console.error('widget load older failed', e)
+		} finally {
+			loadMoreBtn.disabled = false
+		}
 	}
 
 	function scheduleRestart() {
@@ -176,6 +233,7 @@
 		input.value = ''
 	}
 
+	loadMoreBtn.addEventListener('click', loadOlder)
 	bubble.addEventListener('click', openChat)
 	closeBtn.addEventListener('click', () => panel.classList.remove('open'))
 	sendBtn.addEventListener('click', sendMessage)
