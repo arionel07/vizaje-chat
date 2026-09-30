@@ -1,5 +1,7 @@
 // Локальный сервер для тестовой страницы виджета:
 //   bun run serve.ts --port 8080   (или: bun run dev --port 8080)
+import { fileURLToPath } from 'node:url'
+
 const args = Bun.argv.slice(2)
 const i = args.indexOf('--port')
 const port = i !== -1 ? Number(args[i + 1]) : 8080
@@ -22,7 +24,7 @@ Bun.serve({
 		if (pathname === '/favicon.ico') return new Response(null, { status: 204 })
 		const name = files[pathname]
 		if (!name) return new Response('Not found', { status: 404 })
-		return new Response(Bun.file(new URL(name, import.meta.url).pathname))
+		return new Response(Bun.file(fileURLToPath(new URL(name, import.meta.url))))
 	}
 })
 
