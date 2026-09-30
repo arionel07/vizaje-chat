@@ -1,6 +1,7 @@
 import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 import { ALLOWED_ORIGINS } from './config'
+import { analyticsRoutes } from './routes/analytics.routes'
 import { authRoutes } from './routes/auth.routes'
 import { cannedResponsesRoutes } from './routes/canned-responses.routes'
 import { conversationsRoutes } from './routes/conversations.routes'
@@ -26,5 +27,6 @@ export function createApp() {
 		.use(conversationsRoutes)
 		.use(settingsRoutes)
 		.use(cannedResponsesRoutes)
+		.use(analyticsRoutes)
 		.use(wsRoutes)
 }

@@ -283,3 +283,50 @@ export async function deleteCannedResponse(token: string, id: number) {
 	handleUnauthorized(res)
 	await parseOrThrow<{ ok: true }>(res)
 }
+
+export type AnalyticsOverview = {
+	total: number
+	open: number
+	closed: number
+	avgFirstResponseSeconds: number | null
+	respondedCount: number
+}
+export type AnalyticsTimelinePoint = { date: string; count: number }
+export type AnalyticsOperatorStat = {
+	id: number
+	email: string
+	assigned: number
+	closed: number
+	avgFirstResponseSeconds: number | null
+}
+
+function rangeParams(from?: string, to?: string) {
+	const params = new URLSearchParams()
+	if (from) params.set('from', from)
+	if (to) params.set('to', to)
+	return params
+}
+
+export async function fetchAnalyticsOverview(token: string, from?: string, to?: string) {
+	const res = await fetch(`${API_URL}/admin/analytics/overview?${rangeParams(from, to)}`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<AnalyticsOverview>(res)
+}
+
+export async function fetchAnalyticsTimeline(token: string, from?: string, to?: string) {
+	const res = await fetch(`${API_URL}/admin/analytics/timeline?${rangeParams(from, to)}`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<AnalyticsTimelinePoint[]>(res)
+}
+
+export async function fetchAnalyticsOperators(token: string, from?: string, to?: string) {
+	const res = await fetch(`${API_URL}/admin/analytics/operators?${rangeParams(from, to)}`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<AnalyticsOperatorStat[]>(res)
+}

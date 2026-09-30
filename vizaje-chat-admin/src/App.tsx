@@ -1,5 +1,5 @@
 import { MessageSquareText } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { LoginForm } from './auth/LoginForm'
 import { ChatWindow } from './chat/ChatWindow'
 import { ConversationList } from './conversations/ConversationList'
@@ -12,6 +12,13 @@ import {
 } from './lib/api'
 import { SettingsPanel } from './settings/SettingsPanel'
 
+// recharts тяжёлый — не тянем его в общий бандл тем, кто аналитику не открывает
+const AnalyticsPage = lazy(() =>
+	import('./analytics/AnalyticsPage').then(m => ({ default: m.AnalyticsPage }))
+)
+
+type Screen = 'chat' | 'settings' | 'analytics'
+
 const panelClass =
 	'min-w-0 flex-col overflow-hidden bg-white dark:bg-zinc-900 md:rounded-2xl md:border md:border-zinc-200 dark:md:border-zinc-800'
 
@@ -21,7 +28,7 @@ function App() {
 	const [refreshKey, setRefreshKey] = useState(0)
 	const [operators, setOperators] = useState<Operator[]>([])
 	const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([])
-	const [showSettings, setShowSettings] = useState(false)
+	const [screen, setScreen] = useState<Screen>('chat')
 
 	// список для дропдауна «Назначить» в чате; меняется редко — грузим один раз на сессию
 	useEffect(() => {
@@ -55,16 +62,18 @@ function App() {
 		return <LoginForm onSuccess={setToken} />
 	}
 
-	// Телефон: один экран — список или чат. От md: две колонки.
+	const showMain = screen !== 'chat' || !!selected
+
+	// Телефон: один экран — список или чат/настройки/аналитика. От md: две колонки.
 	return (
 		<div className="flex h-dvh md:gap-3 md:p-3">
 			<aside
-				className={`${panelClass} ${selected || showSettings ? 'hidden md:flex' : 'flex'} w-full md:w-[360px] md:shrink-0`}
+				className={`${panelClass} ${showMain ? 'hidden md:flex' : 'flex'} w-full md:w-[360px] md:shrink-0`}
 			>
 				<ConversationList
 					token={token}
 					onSelect={c => {
-						setShowSettings(false)
+						setScreen('chat')
 						setSelected(c)
 					}}
 					onSync={syncSelected}
@@ -73,19 +82,29 @@ function App() {
 					onLogout={logout}
 					onOpenSettings={() => {
 						setSelected(null)
-						setShowSettings(true)
+						setScreen('settings')
+					}}
+					onOpenAnalytics={() => {
+						setSelected(null)
+						setScreen('analytics')
 					}}
 				/>
 			</aside>
-			<main
-				className={`${panelClass} ${selected || showSettings ? 'flex' : 'hidden md:flex'} flex-1`}
-			>
-				{showSettings ? (
+			<main className={`${panelClass} ${showMain ? 'flex' : 'hidden md:flex'} flex-1`}>
+				{screen === 'settings' ? (
 					<SettingsPanel
 						token={token}
-						onBack={() => setShowSettings(false)}
+						onBack={() => setScreen('chat')}
 						onCannedResponsesChange={loadCannedResponses}
 					/>
+				) : screen === 'analytics' ? (
+					<Suspense
+						fallback={
+							<p className="p-4 text-sm text-zinc-500 dark:text-zinc-400">Загрузка…</p>
+						}
+					>
+						<AnalyticsPage token={token} onBack={() => setScreen('chat')} />
+					</Suspense>
 				) : selected ? (
 					<ChatWindow
 						key={selected.id}
