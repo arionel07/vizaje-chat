@@ -2,6 +2,7 @@ import {
 	ArrowLeft,
 	Check,
 	Lock,
+	MessageSquareText,
 	Mic,
 	Reply,
 	RotateCcw,
@@ -19,11 +20,13 @@ import {
 	MESSAGES_PAGE_SIZE,
 	updateAssignee,
 	updateStatus,
+	type CannedResponse,
 	type Conversation,
 	type Operator
 } from '../lib/api'
 import { formatTime } from '../lib/format'
 import { connectAdminWs, type AdminWs } from '../lib/ws'
+import { CannedResponsesPanel } from './CannedResponsesPanel'
 import { EmojiPicker } from './EmojiPicker'
 import { pushRecentEmoji } from './emoji-data'
 import { TypingDots } from './TypingDots'
@@ -57,6 +60,7 @@ export function ChatWindow({
 	token,
 	conversation,
 	operators,
+	cannedResponses,
 	onBack,
 	onActivity,
 	onStatusChange,
@@ -65,6 +69,7 @@ export function ChatWindow({
 	token: string
 	conversation: Conversation
 	operators: Operator[] // для дропдауна «Назначить»
+	cannedResponses: CannedResponse[] // для панели шаблонов ответов
 	onBack: () => void // на телефоне — вернуться к списку
 	onActivity?: () => void // сообщение отправлено или беседа прочитана — обновить список
 	onStatusChange: (status: 'open' | 'closed') => void
@@ -81,6 +86,7 @@ export function ChatWindow({
 	const [visitorTyping, setVisitorTyping] = useState(false)
 	const [replyTarget, setReplyTarget] = useState<ReplyTo | null>(null)
 	const [emojiOpen, setEmojiOpen] = useState(false)
+	const [cannedOpen, setCannedOpen] = useState(false)
 	const [flashId, setFlashId] = useState<number | null>(null)
 	const flashTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const pressRef = useRef<{ timer?: ReturnType<typeof setTimeout>; x: number; y: number }>({
@@ -172,14 +178,48 @@ export function ChatWindow({
 		}
 	}
 
+	// Программная вставка текста в input требует обхода React дважды: обычное
+	// `el.value = ...` (и el.setRangeText — тоже под капотом присваивание) идёт через
+	// сеттер, который React переопределяет НА САМОМ УЗЛЕ, чтобы отслеживать value
+	// (внутренний _valueTracker). Если задать значение через ОРИГИНАЛЬНЫЙ сеттер из
+	// прототипа (в обход переопределения на узле), трекер не узнает об изменении —
+	// а раз не узнает, то и последующий React-рендер не считает нужным подтверждать
+	// новое value, и при следующем ререндере controlled input откатится к старому
+	// значению. Поэтому после подмены value нужно ещё явно продиспатчить 'input':
+	// на это событие у React есть отдельная проверка «tracker vs node.value»,
+	// которая обновляет трекер и сама вызывает наш onChange — ровно так, как если
+	// бы текст напечатал пользователь.
+	function insertAtCursor(el: HTMLInputElement, text: string) {
+		const start = el.selectionStart ?? el.value.length
+		const end = el.selectionEnd ?? el.value.length
+		const value = el.value.slice(0, start) + text + el.value.slice(end)
+		const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+		if (setter) setter.call(el, value)
+		else el.value = value
+		const pos = start + text.length
+		el.setSelectionRange(pos, pos)
+		el.dispatchEvent(new Event('input', { bubbles: true }))
+	}
+
 	// вставка эмодзи в позицию курсора (выделение сохраняется, даже если поле потеряло фокус)
 	function insertEmoji(emoji: string) {
 		const el = inputRef.current
 		if (!el) return
-		el.setRangeText(emoji, el.selectionStart ?? el.value.length, el.selectionEnd ?? el.value.length, 'end')
-		setInput(el.value)
+		insertAtCursor(el, emoji) // onChange (см. insertAtCursor) сам вызовет setInput
 		pushRecentEmoji(emoji)
 		// на телефоне не поднимаем клавиатуру заново
+		if (window.matchMedia('(hover: hover)').matches) el.focus()
+	}
+
+	// вставка шаблона ответа — в позицию курсора, как эмодзи; не отправляет само
+	function insertCanned(text: string) {
+		const el = inputRef.current
+		if (!el) {
+			setInput(prev => prev + text)
+			return
+		}
+		insertAtCursor(el, text)
+		setCannedOpen(false)
 		if (window.matchMedia('(hover: hover)').matches) el.focus()
 	}
 
@@ -632,7 +672,10 @@ export function ChatWindow({
 			>
 				<button
 					type="button"
-					onClick={() => setEmojiOpen(o => !o)}
+					onClick={() => {
+						setEmojiOpen(o => !o)
+						setCannedOpen(false)
+					}}
 					aria-label="Эмодзи"
 					aria-expanded={emojiOpen}
 					aria-controls="emoji-panel"
@@ -642,13 +685,30 @@ export function ChatWindow({
 				>
 					<Smile aria-hidden="true" className="h-5 w-5" />
 				</button>
+				<button
+					type="button"
+					onClick={() => {
+						setCannedOpen(o => !o)
+						setEmojiOpen(false)
+					}}
+					aria-label="Шаблоны ответов"
+					aria-expanded={cannedOpen}
+					aria-controls="canned-panel"
+					title="Шаблоны ответов"
+					className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-300/30 ${
+						cannedOpen ? 'bg-zinc-100 dark:bg-zinc-800' : 'bg-transparent'
+					}`}
+				>
+					<MessageSquareText aria-hidden="true" className="h-5 w-5" />
+				</button>
 				<input
 					ref={inputRef}
 					value={input}
 					onKeyDown={e => {
-						// Escape по очереди: панель эмодзи, потом ответ
+						// Escape по очереди: панели эмодзи/шаблонов, потом ответ
 						if (e.key !== 'Escape') return
 						if (emojiOpen) setEmojiOpen(false)
+						else if (cannedOpen) setCannedOpen(false)
 						else if (replyTarget) setReplyTarget(null)
 					}}
 					onChange={e => {
@@ -690,6 +750,9 @@ export function ChatWindow({
 				</button>
 			</form>
 			{emojiOpen && <EmojiPicker onPick={insertEmoji} />}
+			{cannedOpen && (
+				<CannedResponsesPanel items={cannedResponses} onPick={insertCanned} />
+			)}
 		</div>
 	)
 }

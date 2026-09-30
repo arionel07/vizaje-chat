@@ -28,7 +28,7 @@ export async function resetDb() {
 	// id бесед после truncate начинаются с 1 — счётчики лимитов тоже обнуляем
 	resetRateLimits()
 	await db.execute(
-		sql`truncate messages, conversations, admin_users, settings restart identity cascade`
+		sql`truncate messages, conversations, admin_users, settings, canned_responses restart identity cascade`
 	)
 }
 

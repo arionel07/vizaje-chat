@@ -68,3 +68,12 @@ export const settings = pgTable('settings', {
 	value: jsonb('value').notNull(),
 	updatedAt: timestamp('updated_at').defaultNow().notNull()
 })
+
+// заготовки ответов оператора: title — язык-нейтральный заголовок для списка/поиска
+export const cannedResponses = pgTable('canned_responses', {
+	id: serial('id').primaryKey(),
+	title: text('title').notNull(),
+	textRu: text('text_ru').notNull(),
+	textRo: text('text_ro').notNull(),
+	createdAt: timestamp('created_at').defaultNow().notNull()
+})

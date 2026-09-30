@@ -224,3 +224,62 @@ export async function updateSchedule(token: string, days: Schedule['days']) {
 	}
 	return res.json() as Promise<Schedule>
 }
+
+export type CannedResponse = {
+	id: number
+	title: string
+	textRu: string
+	textRo: string
+	createdAt: string
+}
+export type CannedResponseInput = { title: string; textRu: string; textRo: string }
+
+// сервер отдаёт текст ошибки (пустое поле и т.п.) — пробрасываем как Error для формы
+async function parseOrThrow<T>(res: Response): Promise<T> {
+	if (!res.ok) {
+		const body = await res.json().catch(() => null)
+		throw new Error(body?.error || `Request failed: ${res.status}`)
+	}
+	return res.json() as Promise<T>
+}
+
+export async function fetchCannedResponses(token: string) {
+	const res = await fetch(`${API_URL}/admin/canned-responses`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<CannedResponse[]>(res)
+}
+
+export async function createCannedResponse(token: string, input: CannedResponseInput) {
+	const res = await fetch(`${API_URL}/admin/canned-responses`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify(input)
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<CannedResponse>(res)
+}
+
+export async function updateCannedResponse(
+	token: string,
+	id: number,
+	input: Partial<CannedResponseInput>
+) {
+	const res = await fetch(`${API_URL}/admin/canned-responses/${id}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify(input)
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<CannedResponse>(res)
+}
+
+export async function deleteCannedResponse(token: string, id: number) {
+	const res = await fetch(`${API_URL}/admin/canned-responses/${id}`, {
+		method: 'DELETE',
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	await parseOrThrow<{ ok: true }>(res)
+}

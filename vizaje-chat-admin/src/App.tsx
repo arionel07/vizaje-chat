@@ -3,8 +3,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { LoginForm } from './auth/LoginForm'
 import { ChatWindow } from './chat/ChatWindow'
 import { ConversationList } from './conversations/ConversationList'
-import { fetchOperators, type Conversation, type Operator } from './lib/api'
-import { ScheduleSettings } from './settings/ScheduleSettings'
+import {
+	fetchCannedResponses,
+	fetchOperators,
+	type CannedResponse,
+	type Conversation,
+	type Operator
+} from './lib/api'
+import { SettingsPanel } from './settings/SettingsPanel'
 
 const panelClass =
 	'min-w-0 flex-col overflow-hidden bg-white dark:bg-zinc-900 md:rounded-2xl md:border md:border-zinc-200 dark:md:border-zinc-800'
@@ -14,6 +20,7 @@ function App() {
 	const [selected, setSelected] = useState<Conversation | null>(null)
 	const [refreshKey, setRefreshKey] = useState(0)
 	const [operators, setOperators] = useState<Operator[]>([])
+	const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([])
 	const [showSettings, setShowSettings] = useState(false)
 
 	// список для дропдауна «Назначить» в чате; меняется редко — грузим один раз на сессию
@@ -21,6 +28,13 @@ function App() {
 		if (!token) return
 		fetchOperators(token).then(setOperators).catch(() => {})
 	}, [token])
+
+	// список для панели шаблонов в чате; перезагружаем и после правок в настройках
+	const loadCannedResponses = useCallback(() => {
+		if (!token) return
+		fetchCannedResponses(token).then(setCannedResponses).catch(() => {})
+	}, [token])
+	useEffect(loadCannedResponses, [loadCannedResponses])
 
 	function logout() {
 		localStorage.removeItem('admin_token')
@@ -67,13 +81,18 @@ function App() {
 				className={`${panelClass} ${selected || showSettings ? 'flex' : 'hidden md:flex'} flex-1`}
 			>
 				{showSettings ? (
-					<ScheduleSettings token={token} onBack={() => setShowSettings(false)} />
+					<SettingsPanel
+						token={token}
+						onBack={() => setShowSettings(false)}
+						onCannedResponsesChange={loadCannedResponses}
+					/>
 				) : selected ? (
 					<ChatWindow
 						key={selected.id}
 						token={token}
 						conversation={selected}
 						operators={operators}
+						cannedResponses={cannedResponses}
 						onBack={() => setSelected(null)}
 						onActivity={refreshList}
 						onStatusChange={status =>
