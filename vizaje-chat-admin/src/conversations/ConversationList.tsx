@@ -10,7 +10,33 @@ import {
 } from '../lib/api'
 import { formatListTime } from '../lib/format'
 import { connectAdminWs } from '../lib/ws'
+import {
+	ensureNotificationPermission,
+	playChime,
+	showBrowserNotification,
+	updateFaviconBadge,
+	updateTitle
+} from '../notifications/alerts'
+import { SoundToggle } from '../notifications/SoundToggle'
 import { ThemeToggle } from '../theme/ThemeToggle'
+
+const NOTIFICATION_TEXT_LIMIT = 200
+
+// беседа ещё не подгружена в список (например, отфильтрована) — минимальная заглушка;
+// корректные данные подтянутся ближайшей перезагрузкой списка (onSync)
+function conversationStub(id: number): Conversation {
+	return {
+		id,
+		sessionId: '',
+		status: 'open',
+		createdAt: new Date().toISOString(),
+		visitorLastReadAt: null,
+		lastMessageText: null,
+		lastMessageSender: null,
+		lastMessageAt: null,
+		unreadCount: 0
+	}
+}
 
 const MAX_RELOAD = 100 // максимум, который отдаёт API за один запрос
 const TYPING_SHOW_MS = 5000
@@ -69,10 +95,41 @@ export function ConversationList({
 	// свежие значения для колбэков, чтобы не пересоздавать WS и эффекты
 	const selectedIdRef = useRef(selectedId)
 	const onSyncRef = useRef(onSync)
+	const onSelectRef = useRef(onSelect)
+	const conversationsRef = useRef(conversations)
 	useEffect(() => {
 		selectedIdRef.current = selectedId
 		onSyncRef.current = onSync
-	}, [selectedId, onSync])
+		onSelectRef.current = onSelect
+		conversationsRef.current = conversations
+	}, [selectedId, onSync, onSelect, conversations])
+
+	// запрашиваем разрешение на уведомления один раз при заходе в админку;
+	// если пользователь уже ответил (разрешил или отказал), повторно не спрашиваем
+	useEffect(() => {
+		ensureNotificationPermission()
+	}, [])
+
+	// счётчик непрочитанных бесед — на favicon и в заголовке вкладки
+	useEffect(() => {
+		const unread = counts?.unread ?? 0
+		updateFaviconBadge(unread)
+		updateTitle(unread)
+	}, [counts])
+	useEffect(
+		() => () => {
+			updateFaviconBadge(0)
+			updateTitle(0)
+		},
+		[]
+	)
+
+	// клик по системному уведомлению — фокусирует вкладку (в showBrowserNotification)
+	// и открывает нужную беседу
+	const openConversation = useCallback((conversationId: number) => {
+		const found = conversationsRef.current.find(c => c.id === conversationId)
+		onSelectRef.current(found ?? conversationStub(conversationId))
+	}, [])
 
 	// перезагружает уже показанные беседы; устаревшие ответы игнорируются
 	const reload = useCallback(async () => {
@@ -138,18 +195,37 @@ export function ConversationList({
 	// сообщения и события «прочитано» (admin:global) обновляют превью и счётчики;
 	// «печатает» — только пометка в списке; sent/error касаются лишь окна чата
 	const handleWsEvent = useCallback(
-		(msg: { type?: string; from?: string; sender?: string; conversationId?: number }) => {
+		(msg: {
+			type?: string
+			from?: string
+			sender?: string
+			conversationId?: number
+			text?: string
+		}) => {
 			if (msg.type === 'typing') {
 				if (msg.from === 'visitor' && msg.conversationId)
 					setTyping(msg.conversationId, true)
 				return
 			}
 			if (msg.type === 'sent' || msg.type === 'error') return
-			if (msg.sender === 'visitor' && msg.conversationId)
+			if (msg.sender === 'visitor' && msg.conversationId) {
 				setTyping(msg.conversationId, false)
+				// звук — всегда (можно выключить кнопкой), системное уведомление — только
+				// когда вкладка неактивна, иначе оператор и так видит сообщение на экране
+				playChime()
+				if (document.hidden) {
+					const conversationId = msg.conversationId
+					showBrowserNotification(
+						`Беседа #${conversationId}`,
+						(msg.text ?? '').slice(0, NOTIFICATION_TEXT_LIMIT) || 'Новое сообщение',
+						`chat-${conversationId}`,
+						() => openConversation(conversationId)
+					)
+				}
+			}
 			scheduleReload()
 		},
-		[scheduleReload, setTyping]
+		[scheduleReload, setTyping, openConversation]
 	)
 
 	useEffect(() => {
@@ -185,6 +261,7 @@ export function ConversationList({
 			<header className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
 				<h1 className="text-xl font-semibold tracking-tight">Беседы</h1>
 				<div className="flex items-center">
+					<SoundToggle />
 					<ThemeToggle compact />
 					<button
 						type="button"
