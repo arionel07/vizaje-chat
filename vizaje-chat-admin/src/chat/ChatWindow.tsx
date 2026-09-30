@@ -17,8 +17,10 @@ import {
 	fetchMessages,
 	markRead,
 	MESSAGES_PAGE_SIZE,
+	updateAssignee,
 	updateStatus,
-	type Conversation
+	type Conversation,
+	type Operator
 } from '../lib/api'
 import { formatTime } from '../lib/format'
 import { connectAdminWs, type AdminWs } from '../lib/ws'
@@ -54,15 +56,19 @@ const authorLabel = (sender: string) => (sender === 'admin' ? 'Вы' : 'Посе
 export function ChatWindow({
 	token,
 	conversation,
+	operators,
 	onBack,
 	onActivity,
-	onStatusChange
+	onStatusChange,
+	onAssigneeChange
 }: {
 	token: string
 	conversation: Conversation
+	operators: Operator[] // для дропдауна «Назначить»
 	onBack: () => void // на телефоне — вернуться к списку
 	onActivity?: () => void // сообщение отправлено или беседа прочитана — обновить список
 	onStatusChange: (status: 'open' | 'closed') => void
+	onAssigneeChange: (assigneeId: number | null, assigneeEmail: string | null) => void
 }) {
 	const conversationId = conversation.id
 	const closed = conversation.status === 'closed'
@@ -71,6 +77,7 @@ export function ChatWindow({
 	const [hasMore, setHasMore] = useState(false)
 	const [loadingMore, setLoadingMore] = useState(false)
 	const [toggling, setToggling] = useState(false)
+	const [assigning, setAssigning] = useState(false)
 	const [visitorTyping, setVisitorTyping] = useState(false)
 	const [replyTarget, setReplyTarget] = useState<ReplyTo | null>(null)
 	const [emojiOpen, setEmojiOpen] = useState(false)
@@ -390,9 +397,24 @@ export function ChatWindow({
 		}
 	}
 
+	async function handleAssign(value: string) {
+		if (assigning) return
+		const assigneeId = value ? Number(value) : null
+		setAssigning(true)
+		try {
+			const updated = await updateAssignee(token, conversationId, assigneeId)
+			onAssigneeChange(updated.assigneeId, updated.assigneeEmail)
+			onActivityRef.current?.()
+		} catch {
+			// сеть недоступна — назначение не меняем
+		} finally {
+			setAssigning(false)
+		}
+	}
+
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<header className="flex items-center gap-2 border-b border-zinc-200 px-2 py-3 dark:border-zinc-800 md:px-4">
+			<header className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-2 py-3 dark:border-zinc-800 md:px-4">
 				<button
 					type="button"
 					onClick={onBack}
@@ -418,6 +440,21 @@ export function ChatWindow({
 						{closed ? 'Закрыта' : 'Открыта'}
 					</p>
 				</div>
+				<select
+					value={conversation.assigneeId ?? ''}
+					onChange={e => handleAssign(e.target.value)}
+					disabled={assigning}
+					aria-label="Назначить оператора"
+					title="Назначить оператора"
+					className="h-10 shrink-0 cursor-pointer rounded-lg border border-zinc-300 bg-transparent px-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
+				>
+					<option value="">Не назначено</option>
+					{operators.map(o => (
+						<option key={o.id} value={o.id}>
+							{o.email}
+						</option>
+					))}
+				</select>
 				<button
 					type="button"
 					onClick={toggleStatus}

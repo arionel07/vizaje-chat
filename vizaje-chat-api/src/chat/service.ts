@@ -1,8 +1,24 @@
-import { and, desc, eq, lt, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '../db/client'
-import { conversations, messages } from '../db/schema'
+import { adminUsers, conversations, messages } from '../db/schema'
 import { publishMessage } from './events'
+
+// список операторов для назначения бесед
+export async function getOperators() {
+	return db
+		.select({ id: adminUsers.id, email: adminUsers.email })
+		.from(adminUsers)
+		.orderBy(adminUsers.email)
+}
+
+export async function operatorExists(id: number) {
+	const [row] = await db
+		.select({ id: adminUsers.id })
+		.from(adminUsers)
+		.where(eq(adminUsers.id, id))
+	return !!row
+}
 
 // Цитата в ответе: краткая выдержка из исходного сообщения
 export const REPLY_SNIPPET_LENGTH = 200
@@ -140,17 +156,22 @@ const unreadCountExpr = () => sql`(
 
 // Беседы, отсортированные по последней активности, с последним сообщением
 // и числом непрочитанных сообщений посетителя.
-// status — только открытые/закрытые; unread — только с непрочитанными
+// status — только открытые/закрытые; unread — только с непрочитанными;
+// assignee: 'me' — назначенные на meId, 'unassigned' — без назначения
 export async function getConversations({
 	limit,
 	offset,
 	status,
-	unread
+	unread,
+	assignee,
+	meId
 }: {
 	limit?: number
 	offset?: number
 	status?: 'open' | 'closed'
 	unread?: boolean
+	assignee?: 'me' | 'unassigned'
+	meId?: number
 } = {}) {
 	const size = Math.min(
 		Math.max(Math.trunc(limit ?? DEFAULT_CONVERSATIONS_LIMIT), 1),
@@ -171,6 +192,8 @@ export async function getConversations({
 			status: conversations.status,
 			createdAt: conversations.createdAt,
 			visitorLastReadAt: conversations.visitorLastReadAt,
+			assigneeId: conversations.assigneeId,
+			assigneeEmail: adminUsers.email,
 			lastMessageText: sql<string | null>`(
 				select m.text from messages m
 				where m.conversation_id = ${convId}
@@ -185,10 +208,15 @@ export async function getConversations({
 			unreadCount: sql<number>`${unreadCountExpr()}`
 		})
 		.from(conversations)
+		.leftJoin(adminUsers, eq(conversations.assigneeId, adminUsers.id))
 		.where(
 			and(
 				status ? eq(conversations.status, status) : undefined,
-				unread ? sql`${unreadCountExpr()} > 0` : undefined
+				unread ? sql`${unreadCountExpr()} > 0` : undefined,
+				assignee === 'unassigned' ? isNull(conversations.assigneeId) : undefined,
+				assignee === 'me' && meId != null
+					? eq(conversations.assigneeId, meId)
+					: undefined
 			)
 		)
 		.orderBy(
@@ -199,16 +227,51 @@ export async function getConversations({
 		.offset(skip)
 }
 
-// счётчики для фильтров: открытые, закрытые, с непрочитанными
-export async function getConversationCounts() {
+// счётчики для фильтров: открытые, закрытые, с непрочитанными, мои
+export async function getConversationCounts(meId?: number) {
 	const [row] = await db
 		.select({
 			open: sql<number>`(count(*) filter (where "conversations"."status" = 'open'))::int`,
 			closed: sql<number>`(count(*) filter (where "conversations"."status" = 'closed'))::int`,
-			unread: sql<number>`(count(*) filter (where ${unreadCountExpr()} > 0))::int`
+			unread: sql<number>`(count(*) filter (where ${unreadCountExpr()} > 0))::int`,
+			mine: sql<number>`(count(*) filter (where "conversations"."assignee_id" = ${meId ?? null}))::int`
 		})
 		.from(conversations)
-	return row ?? { open: 0, closed: 0, unread: 0 }
+	return row ?? { open: 0, closed: 0, unread: 0, mine: 0 }
+}
+
+// назначить беседу оператору или снять назначение (assigneeId: null).
+// пишет системное сообщение и публикует его по WS, как при смене статуса
+export async function updateConversationAssignee(
+	conversationId: number,
+	assigneeId: number | null
+) {
+	const [updated] = await db
+		.update(conversations)
+		.set({ assigneeId })
+		.where(eq(conversations.id, conversationId))
+		.returning()
+	if (!updated) return null
+
+	let assigneeEmail: string | null = null
+	if (assigneeId != null) {
+		const [operator] = await db
+			.select({ email: adminUsers.email })
+			.from(adminUsers)
+			.where(eq(adminUsers.id, assigneeId))
+		assigneeEmail = operator?.email ?? null
+	}
+
+	const systemMessage = await addMessage(
+		conversationId,
+		'system',
+		assigneeEmail
+			? `Беседа назначена на ${assigneeEmail}`
+			: 'Назначение беседы снято'
+	)
+	publishMessage(conversationId, systemMessage)
+
+	return { ...updated, assigneeEmail }
 }
 
 // Оператор прочитал беседу. Возвращает серверное время отметки, null — беседы нет

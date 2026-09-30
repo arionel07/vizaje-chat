@@ -25,3 +25,12 @@ export function formatListTime(iso: string) {
 	if (now.getTime() - d.getTime() < 7 * DAY) return weekdayFmt.format(d)
 	return dateFmt.format(d)
 }
+
+// инициалы оператора для аватара-бейджа: из имени до @, до 2 букв
+export function initials(email: string) {
+	const name = email.split('@')[0] ?? email
+	const parts = name.split(/[.\-_]+/).filter(Boolean)
+	const letters =
+		parts.length >= 2 ? parts[0]![0] + parts[1]![0] : name.slice(0, 2)
+	return letters.toUpperCase()
+}

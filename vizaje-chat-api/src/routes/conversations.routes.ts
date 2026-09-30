@@ -5,7 +5,10 @@ import {
 	getConversationCounts,
 	getConversations,
 	getMessages,
+	getOperators,
 	markConversationRead,
+	operatorExists,
+	updateConversationAssignee,
 	updateConversationStatus
 } from '../chat/service'
 
@@ -18,7 +21,8 @@ const conversationsQuery = t.Object({
 	limit: t.Optional(t.Numeric()),
 	offset: t.Optional(t.Numeric()),
 	status: t.Optional(t.Union([t.Literal('open'), t.Literal('closed')])),
-	unread: t.Optional(t.BooleanString())
+	unread: t.Optional(t.BooleanString()),
+	assignee: t.Optional(t.Union([t.Literal('me'), t.Literal('unassigned')]))
 })
 
 export const conversationsRoutes = new Elysia()
@@ -30,7 +34,7 @@ export const conversationsRoutes = new Elysia()
 				set.status = 401
 				return { error: 'Unauthorized' }
 			}
-			return getConversations(query)
+			return getConversations({ ...query, meId: admin.sub })
 		},
 		{ query: conversationsQuery }
 	)
@@ -40,7 +44,15 @@ export const conversationsRoutes = new Elysia()
 			set.status = 401
 			return { error: 'Unauthorized' }
 		}
-		return getConversationCounts()
+		return getConversationCounts(admin.sub)
+	})
+	.get('/admin/operators', async ({ headers, set }) => {
+		const admin = verifyToken(headers.authorization)
+		if (!admin) {
+			set.status = 401
+			return { error: 'Unauthorized' }
+		}
+		return getOperators()
 	})
 	.post('/admin/conversations/:id/read', async ({ headers, params, set }) => {
 		const admin = verifyToken(headers.authorization)
@@ -90,6 +102,37 @@ export const conversationsRoutes = new Elysia()
 		{
 			body: t.Object({
 				status: t.Union([t.Literal('open'), t.Literal('closed')])
+			})
+		}
+	)
+	.patch(
+		'/admin/conversations/:id/assignee',
+		async ({ headers, params, body, set }) => {
+			const admin = verifyToken(headers.authorization)
+			if (!admin) {
+				set.status = 401
+				return { error: 'Unauthorized' }
+			}
+			if (body.assigneeId != null && !(await operatorExists(body.assigneeId))) {
+				set.status = 404
+				return { error: 'Operator not found' }
+			}
+			const conversationId = Number(params.id)
+			const updated = await updateConversationAssignee(
+				conversationId,
+				body.assigneeId
+			)
+			if (!updated) {
+				set.status = 404
+				return { error: 'Conversation not found' }
+			}
+			// системное сообщение уже публикуется updateConversationAssignee;
+			// admin:global получит его и обновит список — отдельное событие не нужно
+			return updated
+		},
+		{
+			body: t.Object({
+				assigneeId: t.Union([t.Number(), t.Null()])
 			})
 		}
 	)

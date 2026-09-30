@@ -29,6 +29,10 @@ export const conversations = pgTable('conversations', {
 	adminLastReadAt: timestamp('admin_last_read_at'),
 	// когда посетитель в последний раз видел сообщения (виджет открыт); для «Прочитано»
 	visitorLastReadAt: timestamp('visitor_last_read_at'),
+	// оператор, за которым закреплена беседа; при удалении оператора — снимается
+	assigneeId: integer('assignee_id').references(() => adminUsers.id, {
+		onDelete: 'set null'
+	}),
 	createdAt: timestamp('created_at').defaultNow().notNull()
 })
 

@@ -86,7 +86,7 @@ describe('список бесед', () => {
 describe('счётчики и прочитанность', () => {
 	test('counts: открытые, закрытые, с непрочитанными', async () => {
 		const res = await api('/admin/conversations/counts', { token })
-		expect(res.body).toEqual({ open: 3, closed: 1, unread: 2 })
+		expect(res.body).toEqual({ open: 3, closed: 1, unread: 2, mine: 0 })
 	})
 
 	test('POST /read обнуляет непрочитанные, новое сообщение считается снова', async () => {

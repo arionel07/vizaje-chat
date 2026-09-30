@@ -43,17 +43,26 @@ export type Conversation = {
 	status: 'open' | 'closed'
 	createdAt: string
 	visitorLastReadAt: string | null // когда посетитель видел сообщения — для «Прочитано»
+	assigneeId: number | null
+	assigneeEmail: string | null
 	lastMessageText: string | null
 	lastMessageSender: string | null
 	lastMessageAt: string | null
 	unreadCount: number
 }
 
+export type Operator = { id: number; email: string }
+
 export const CONVERSATIONS_PAGE_SIZE = 30
 
-export type ConversationFilter = 'all' | 'open' | 'closed' | 'unread'
+export type ConversationFilter = 'all' | 'mine' | 'open' | 'closed' | 'unread'
 
-export type ConversationCounts = { open: number; closed: number; unread: number }
+export type ConversationCounts = {
+	open: number
+	closed: number
+	unread: number
+	mine: number
+}
 
 export async function fetchConversations(
 	token: string,
@@ -69,6 +78,7 @@ export async function fetchConversations(
 	})
 	if (filter === 'open' || filter === 'closed') params.set('status', filter)
 	if (filter === 'unread') params.set('unread', 'true')
+	if (filter === 'mine') params.set('assignee', 'me')
 	const res = await fetch(`${API_URL}/admin/conversations?${params}`, {
 		headers: { Authorization: `Bearer ${token}` }
 	})
@@ -84,6 +94,15 @@ export async function fetchCounts(token: string) {
 	handleUnauthorized(res)
 	assertOk(res)
 	return res.json() as Promise<ConversationCounts>
+}
+
+export async function fetchOperators(token: string) {
+	const res = await fetch(`${API_URL}/admin/operators`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return res.json() as Promise<Operator[]>
 }
 
 // проверяет, что токен ещё действителен; при 401 — выход на логин.
@@ -144,4 +163,25 @@ export async function updateStatus(
 	)
 	handleUnauthorized(res)
 	return res.json()
+}
+
+export async function updateAssignee(
+	token: string,
+	conversationId: number,
+	assigneeId: number | null
+) {
+	const res = await fetch(
+		`${API_URL}/admin/conversations/${conversationId}/assignee`,
+		{
+			method: 'PATCH',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${token}`
+			},
+			body: JSON.stringify({ assigneeId })
+		}
+	)
+	handleUnauthorized(res)
+	assertOk(res)
+	return res.json() as Promise<{ assigneeId: number | null; assigneeEmail: string | null }>
 }

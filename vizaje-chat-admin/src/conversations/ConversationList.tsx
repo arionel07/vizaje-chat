@@ -8,7 +8,7 @@ import {
 	type ConversationCounts,
 	type ConversationFilter
 } from '../lib/api'
-import { formatListTime } from '../lib/format'
+import { formatListTime, initials } from '../lib/format'
 import { connectAdminWs } from '../lib/ws'
 import {
 	ensureNotificationPermission,
@@ -31,6 +31,8 @@ function conversationStub(id: number): Conversation {
 		status: 'open',
 		createdAt: new Date().toISOString(),
 		visitorLastReadAt: null,
+		assigneeId: null,
+		assigneeEmail: null,
 		lastMessageText: null,
 		lastMessageSender: null,
 		lastMessageAt: null,
@@ -43,6 +45,7 @@ const TYPING_SHOW_MS = 5000
 
 const FILTERS: { id: ConversationFilter; label: string }[] = [
 	{ id: 'all', label: 'Все' },
+	{ id: 'mine', label: 'Мои' },
 	{ id: 'unread', label: 'Непрочитанные' },
 	{ id: 'open', label: 'Открытые' },
 	{ id: 'closed', label: 'Закрытые' }
@@ -354,8 +357,16 @@ export function ConversationList({
 											: 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'
 									}`}
 								>
-									<span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+									<span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
 										<User aria-hidden="true" className="h-5 w-5" />
+										{c.assigneeEmail && (
+											<span
+												title={`Назначена: ${c.assigneeEmail}`}
+												className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-900 text-[10px] font-semibold text-white ring-2 ring-white dark:bg-zinc-100 dark:text-zinc-900 dark:ring-zinc-900"
+											>
+												{initials(c.assigneeEmail)}
+											</span>
+										)}
 									</span>
 									<span className="min-w-0 flex-1">
 										<span className="flex items-baseline justify-between gap-2">

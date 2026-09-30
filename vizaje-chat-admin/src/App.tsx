@@ -1,9 +1,9 @@
 import { MessageSquareText } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { LoginForm } from './auth/LoginForm'
 import { ChatWindow } from './chat/ChatWindow'
 import { ConversationList } from './conversations/ConversationList'
-import type { Conversation } from './lib/api'
+import { fetchOperators, type Conversation, type Operator } from './lib/api'
 
 const panelClass =
 	'min-w-0 flex-col overflow-hidden bg-white dark:bg-zinc-900 md:rounded-2xl md:border md:border-zinc-200 dark:md:border-zinc-800'
@@ -12,6 +12,13 @@ function App() {
 	const [token, setToken] = useState(localStorage.getItem('admin_token'))
 	const [selected, setSelected] = useState<Conversation | null>(null)
 	const [refreshKey, setRefreshKey] = useState(0)
+	const [operators, setOperators] = useState<Operator[]>([])
+
+	// список для дропдауна «Назначить» в чате; меняется редко — грузим один раз на сессию
+	useEffect(() => {
+		if (!token) return
+		fetchOperators(token).then(setOperators).catch(() => {})
+	}, [token])
 
 	function logout() {
 		localStorage.removeItem('admin_token')
@@ -53,10 +60,14 @@ function App() {
 						key={selected.id}
 						token={token}
 						conversation={selected}
+						operators={operators}
 						onBack={() => setSelected(null)}
 						onActivity={refreshList}
 						onStatusChange={status =>
 							setSelected(prev => (prev ? { ...prev, status } : prev))
+						}
+						onAssigneeChange={(assigneeId, assigneeEmail) =>
+							setSelected(prev => (prev ? { ...prev, assigneeId, assigneeEmail } : prev))
 						}
 					/>
 				) : (
