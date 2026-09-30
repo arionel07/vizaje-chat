@@ -2,6 +2,7 @@ import {
 	type AnyPgColumn,
 	index,
 	integer,
+	jsonb,
 	pgEnum,
 	pgTable,
 	serial,
@@ -60,3 +61,10 @@ export const messages = pgTable(
 	},
 	t => [index('messages_conversation_id_idx').on(t.conversationId, t.id)]
 )
+
+// key-value для простых глобальных настроек (пока только рабочий график)
+export const settings = pgTable('settings', {
+	key: text('key').primaryKey(),
+	value: jsonb('value').notNull(),
+	updatedAt: timestamp('updated_at').defaultNow().notNull()
+})

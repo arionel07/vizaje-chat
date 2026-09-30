@@ -13,9 +13,15 @@ import {
 	markVisitorRead,
 	replyTargetExists
 } from '../chat/service'
+import { getSchedule, getStatus, summarizeSchedule } from '../settings/service'
 import { createSession, verifySessionToken } from '../widget/service'
 
 export const widgetRoutes = new Elysia()
+	// публичный: посетитель ещё без сессии, когда только открывает чат
+	.get('/widget/status', async () => {
+		const schedule = await getSchedule()
+		return { ...getStatus(schedule), scheduleSummary: summarizeSchedule(schedule) }
+	})
 	.post('/widget/session', async ({ set, request, server }) => {
 		if (!allowSessionCreate(getClientIp({ request, server }))) {
 			set.status = 429

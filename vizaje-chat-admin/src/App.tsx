@@ -4,6 +4,7 @@ import { LoginForm } from './auth/LoginForm'
 import { ChatWindow } from './chat/ChatWindow'
 import { ConversationList } from './conversations/ConversationList'
 import { fetchOperators, type Conversation, type Operator } from './lib/api'
+import { ScheduleSettings } from './settings/ScheduleSettings'
 
 const panelClass =
 	'min-w-0 flex-col overflow-hidden bg-white dark:bg-zinc-900 md:rounded-2xl md:border md:border-zinc-200 dark:md:border-zinc-800'
@@ -13,6 +14,7 @@ function App() {
 	const [selected, setSelected] = useState<Conversation | null>(null)
 	const [refreshKey, setRefreshKey] = useState(0)
 	const [operators, setOperators] = useState<Operator[]>([])
+	const [showSettings, setShowSettings] = useState(false)
 
 	// список для дропдауна «Назначить» в чате; меняется редко — грузим один раз на сессию
 	useEffect(() => {
@@ -43,19 +45,30 @@ function App() {
 	return (
 		<div className="flex h-dvh md:gap-3 md:p-3">
 			<aside
-				className={`${panelClass} ${selected ? 'hidden md:flex' : 'flex'} w-full md:w-[360px] md:shrink-0`}
+				className={`${panelClass} ${selected || showSettings ? 'hidden md:flex' : 'flex'} w-full md:w-[360px] md:shrink-0`}
 			>
 				<ConversationList
 					token={token}
-					onSelect={setSelected}
+					onSelect={c => {
+						setShowSettings(false)
+						setSelected(c)
+					}}
 					onSync={syncSelected}
 					selectedId={selected?.id ?? null}
 					refreshKey={refreshKey}
 					onLogout={logout}
+					onOpenSettings={() => {
+						setSelected(null)
+						setShowSettings(true)
+					}}
 				/>
 			</aside>
-			<main className={`${panelClass} ${selected ? 'flex' : 'hidden md:flex'} flex-1`}>
-				{selected ? (
+			<main
+				className={`${panelClass} ${selected || showSettings ? 'flex' : 'hidden md:flex'} flex-1`}
+			>
+				{showSettings ? (
+					<ScheduleSettings token={token} onBack={() => setShowSettings(false)} />
+				) : selected ? (
 					<ChatWindow
 						key={selected.id}
 						token={token}

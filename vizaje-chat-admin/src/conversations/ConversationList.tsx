@@ -1,4 +1,13 @@
-import { CircleAlert, Lock, LogOut, MessageSquare, Search, User, X } from 'lucide-react'
+import {
+	CircleAlert,
+	Lock,
+	LogOut,
+	MessageSquare,
+	Search,
+	Settings,
+	User,
+	X
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
 	CONVERSATIONS_PAGE_SIZE,
@@ -73,7 +82,8 @@ export function ConversationList({
 	onSync,
 	selectedId,
 	refreshKey,
-	onLogout
+	onLogout,
+	onOpenSettings
 }: {
 	token: string
 	onSelect: (conversation: Conversation) => void
@@ -82,6 +92,7 @@ export function ConversationList({
 	selectedId: number | null
 	refreshKey: number
 	onLogout: () => void
+	onOpenSettings: () => void
 }) {
 	const [conversations, setConversations] = useState<Conversation[]>([])
 	const [counts, setCounts] = useState<ConversationCounts | null>(null)
@@ -296,6 +307,15 @@ export function ConversationList({
 				<div className="flex items-center">
 					<SoundToggle />
 					<ThemeToggle compact />
+					<button
+						type="button"
+						onClick={onOpenSettings}
+						aria-label="Настройки"
+						title="Настройки"
+						className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
+					>
+						<Settings aria-hidden="true" className="h-5 w-5" />
+					</button>
 					<button
 						type="button"
 						onClick={onLogout}

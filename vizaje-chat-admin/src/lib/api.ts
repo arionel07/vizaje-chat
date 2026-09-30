@@ -192,3 +192,35 @@ export async function updateAssignee(
 	assertOk(res)
 	return res.json() as Promise<{ assigneeId: number | null; assigneeEmail: string | null }>
 }
+
+export type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
+export type DaySchedule = { enabled: boolean; start: string; end: string } // start/end — "HH:MM"
+export type Schedule = { timezone: string; days: Record<DayKey, DaySchedule> }
+
+export async function fetchSchedule(token: string) {
+	const res = await fetch(`${API_URL}/admin/settings/schedule`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return res.json() as Promise<Schedule>
+}
+
+// сервер сам проверяет формат времени и что начало раньше конца — при ошибке
+// (422) кидает Error с текстом для показа в форме
+export async function updateSchedule(token: string, days: Schedule['days']) {
+	const res = await fetch(`${API_URL}/admin/settings/schedule`, {
+		method: 'PUT',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		},
+		body: JSON.stringify({ days })
+	})
+	handleUnauthorized(res)
+	if (!res.ok) {
+		const body = await res.json().catch(() => null)
+		throw new Error(body?.error || `Request failed: ${res.status}`)
+	}
+	return res.json() as Promise<Schedule>
+}

@@ -164,6 +164,7 @@
   .icon-btn { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
   .icon-btn:hover { background: var(--surface); color: var(--fg); }
   .banner { padding: 8px 16px; font-size: 13px; text-align: center; color: var(--danger); background: var(--surface); }
+  .offline-banner { padding: 8px 16px; font-size: 13px; text-align: center; color: var(--muted); background: var(--surface); border-bottom: 1px solid var(--border); }
 
   .messages { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 6px; overscroll-behavior: contain; }
   .row { display: flex; flex-direction: column; max-width: 85%; }
@@ -267,6 +268,7 @@
       <button class="icon-btn close" type="button" aria-label="Свернуть чат">${ICON_CLOSE}</button>
     </header>
     <div class="banner" role="status" hidden>Нет соединения. Переподключаемся…</div>
+    <div class="offline-banner" role="status" hidden></div>
     <div class="messages" role="log" aria-live="polite"></div>
     <div class="note" role="status" hidden></div>
     <div class="reply-bar" hidden>
@@ -299,6 +301,7 @@
 	const panel = $('.panel')
 	const closeBtn = $('.close')
 	const banner = $('.banner')
+	const offlineBanner = $('.offline-banner')
 	const messagesEl = $('.messages')
 	const form = $('.composer')
 	const replyBar = $('.reply-bar')
@@ -673,6 +676,24 @@
 		updateReceipts()
 	}
 
+	// рабочий график: публичный эндпоинт, токен посетителя не нужен. Не блокирует
+	// отправку сообщений — просто честно говорит, что ответ будет не сразу
+	async function checkStatus() {
+		try {
+			const res = await fetch(`${API_URL}/widget/status`)
+			if (!res.ok) return
+			const { online, scheduleSummary } = await res.json()
+			offlineBanner.hidden = online
+			offlineBanner.textContent = online
+				? ''
+				: scheduleSummary
+					? `Сейчас мы не в сети. Обычно отвечаем в рабочие часы: ${scheduleSummary}`
+					: 'Сейчас мы не в сети.'
+		} catch {
+			// сбой — молчим, лучше ничего не показать, чем соврать про офлайн
+		}
+	}
+
 	// когда оператор последний раз читал беседу (для «Прочитано»); сбой не критичен
 	async function loadState() {
 		try {
@@ -782,6 +803,7 @@
 	}
 	async function openChat() {
 		setOpen(true)
+		checkStatus() // не блокирует остальной старт
 		await start()
 	}
 	function closeChat() {
