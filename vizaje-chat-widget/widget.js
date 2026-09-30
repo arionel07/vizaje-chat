@@ -9,6 +9,14 @@
  *   data-agent  — подпись сотрудника под сообщениями (по умолчанию «Поддержка»)
  *   data-lang   — язык диктовки (по умолчанию ru-RU); кнопка микрофона есть только
  *                 в браузерах с распознаванием речи (Chrome, Edge, Safari)
+ *   data-greeting      — приветствие в пустом чате (по умолчанию «Привет! 👋 Чем мы можем помочь?»)
+ *   data-quick-replies — быстрые вопросы под приветствием через запятую, до 4 штук:
+ *                        "Есть ли в наличии?,Сроки доставки,Как оформить возврат"
+ *   data-position      — bottom-right (по умолчанию) | bottom-left
+ *   data-z-index       — z-index виджета (по умолчанию 999999)
+ *   data-offset-bottom — отступ снизу в px (по умолчанию 20)
+ *   data-offset-right / data-offset-left — отступ от края в px (по умолчанию 20);
+ *                        действует тот, что соответствует data-position
  */
 ;(function () {
 	if (window.__vizajeChatLoaded) return
@@ -23,6 +31,22 @@
 	const AGENT = cfg.agent || 'Поддержка'
 	const THEME = ['light', 'dark'].includes(cfg.theme) ? cfg.theme : 'auto'
 	const LANG = cfg.lang || 'ru-RU'
+	const GREETING = (cfg.greeting || '').trim() || 'Привет! 👋 Чем мы можем помочь?'
+	const MAX_QUICK_REPLIES = 4
+	const QUICK_REPLIES = (cfg.quickReplies || '')
+		.split(',')
+		.map(t => t.trim())
+		.filter(Boolean)
+		.slice(0, MAX_QUICK_REPLIES)
+	const POSITION = cfg.position === 'bottom-left' ? 'bottom-left' : 'bottom-right'
+	const cssPx = (value, fallback) => {
+		const n = Number.parseFloat(value)
+		return Number.isFinite(n) && n >= 0 ? n : fallback
+	}
+	const zIndex = Number.parseInt(cfg.zIndex, 10)
+	const Z_INDEX = Number.isFinite(zIndex) ? zIndex : 999999
+	const OFFSET_BOTTOM = cssPx(cfg.offsetBottom, 20)
+	const OFFSET_SIDE = cssPx(POSITION === 'bottom-left' ? cfg.offsetLeft : cfg.offsetRight, 20)
 	const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition
 
 	const PAGE_SIZE = 50
@@ -70,6 +94,10 @@
 	const host = document.createElement('div')
 	host.id = 'vizaje-chat-host'
 	host.setAttribute('data-theme', THEME)
+	// позиция и слой читаются один раз при инициализации и ложатся в inline-стили корня
+	host.style.setProperty('--vz-z', String(Z_INDEX))
+	host.style.setProperty('--vz-offset-x', OFFSET_SIDE + 'px')
+	host.style.setProperty('--vz-offset-y', OFFSET_BOTTOM + 'px')
 	const root = host.attachShadow({ mode: 'open' })
 
 	root.innerHTML = `
@@ -95,10 +123,10 @@
   :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
   .root { font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; color: var(--fg); }
-  .launcher, .toast, .panel { position: fixed; z-index: 2147483000; }
+  .launcher, .toast, .panel { position: fixed; z-index: var(--vz-z, 999999); }
 
   /* кнопка-лаунчер */
-  .launcher { right: max(20px, env(safe-area-inset-right)); bottom: max(20px, env(safe-area-inset-bottom));
+  .launcher { right: max(var(--vz-offset-x, 20px), env(safe-area-inset-right)); bottom: max(var(--vz-offset-y, 20px), env(safe-area-inset-bottom));
     width: 60px; height: 60px; border-radius: 50%; background: var(--launcher-bg); color: var(--launcher-fg);
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 6px 24px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06); transition: transform .15s ease; }
@@ -111,7 +139,7 @@
     display: flex; align-items: center; justify-content: center; border: 2px solid var(--launcher-bg); }
 
   /* превью нового сообщения над лаунчером */
-  .toast { right: max(20px, env(safe-area-inset-right)); bottom: calc(max(20px, env(safe-area-inset-bottom)) + 76px);
+  .toast { right: max(var(--vz-offset-x, 20px), env(safe-area-inset-right)); bottom: calc(max(var(--vz-offset-y, 20px), env(safe-area-inset-bottom)) + 76px);
     width: 320px; max-width: calc(100vw - 32px); display: flex; gap: 12px; text-align: left;
     padding: 14px 16px; border-radius: 20px; background: var(--bg); color: var(--fg);
     border: 1px solid var(--border); box-shadow: var(--shadow); animation: pop .2s ease-out; }
@@ -123,11 +151,12 @@
     display: flex; align-items: center; justify-content: center; }
 
   /* панель */
-  .panel { display: none; flex-direction: column; right: max(20px, env(safe-area-inset-right));
-    bottom: calc(max(20px, env(safe-area-inset-bottom)) + 76px); width: 400px; max-width: calc(100vw - 32px);
-    height: min(680px, calc(100dvh - 116px)); background: var(--bg); color: var(--fg);
+  .panel { display: none; flex-direction: column; right: max(var(--vz-offset-x, 20px), env(safe-area-inset-right));
+    bottom: calc(max(var(--vz-offset-y, 20px), env(safe-area-inset-bottom)) + 76px); width: 400px; max-width: calc(100vw - 32px);
+    height: min(680px, calc(100dvh - 96px - var(--vz-offset-y, 20px))); background: var(--bg); color: var(--fg);
     border: 1px solid var(--border); border-radius: 24px; box-shadow: var(--shadow); overflow: hidden; }
   .root.open .panel { display: flex; animation: pop .2s ease-out; }
+  .root.left .launcher, .root.left .toast, .root.left .panel { right: auto; left: max(var(--vz-offset-x, 20px), env(safe-area-inset-left)); }
   .head { display: flex; align-items: center; gap: 12px; padding: 14px 12px 14px 16px; border-bottom: 1px solid var(--border); }
   .head-text { flex: 1; min-width: 0; }
   .title { font-weight: 600; font-size: 16px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -190,6 +219,11 @@
   .reply-author { font-size: 12px; font-weight: 600; }
   .reply-snippet { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row.failed .quote { border-color: var(--danger); }
+  .welcome { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+  .quick { display: flex; flex-wrap: wrap; gap: 8px; max-width: 100%; }
+  .quick-btn { padding: 8px 14px; border-radius: 18px; border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+    font-size: 14px; line-height: 1.3; text-align: left; overflow-wrap: anywhere; }
+  .quick-btn:hover { background: var(--surface); border-color: var(--ring); }
   .load-more { align-self: center; margin-bottom: 8px; padding: 6px 14px; border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 12px; }
   .load-more:disabled { opacity: .6; cursor: default; }
 
@@ -212,7 +246,7 @@
 
   /* телефон: панель на весь экран, лаунчер скрыт (закрытие — в шапке) */
   @media (max-width: 480px) {
-    .panel { inset: 0; width: auto; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
+    .panel, .root.left .panel { inset: 0; width: auto; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
     .root.open .launcher { display: none; }
     .head { padding-top: calc(14px + env(safe-area-inset-top)); }
   }
@@ -258,6 +292,7 @@
 
 	const $ = sel => root.querySelector(sel)
 	const rootEl = $('.root')
+	if (POSITION === 'bottom-left') rootEl.classList.add('left')
 	const launcher = $('.launcher')
 	const badge = $('.badge')
 	const toast = $('.toast')
@@ -305,11 +340,31 @@
 	const isAgent = sender => sender === 'admin' || sender === 'bot'
 
 	// --- сообщения ------------------------------------------------------------
+	// приветствие и быстрые вопросы — чисто фронтовый рендер, в БД не пишутся
 	const greeting = document.createElement('div')
-	greeting.className = 'row agent'
-	greeting.innerHTML = '<div class="bubble">Привет! 👋 Чем мы можем помочь?</div>'
+	greeting.className = 'welcome'
+	const greetingRow = document.createElement('div')
+	greetingRow.className = 'row agent'
+	const greetingBubble = document.createElement('div')
+	greetingBubble.className = 'bubble'
+	greetingBubble.textContent = GREETING
+	greetingRow.appendChild(greetingBubble)
+	greeting.appendChild(greetingRow)
+	if (QUICK_REPLIES.length) {
+		const quick = document.createElement('div')
+		quick.className = 'quick'
+		for (const text of QUICK_REPLIES) {
+			const btn = document.createElement('button')
+			btn.type = 'button'
+			btn.className = 'quick-btn'
+			btn.textContent = text
+			btn.addEventListener('click', () => sendText(text))
+			quick.appendChild(btn)
+		}
+		greeting.appendChild(quick)
+	}
 	function updateGreeting() {
-		// приветствие — только локальная заглушка, пока в беседе нет сообщений
+		// пока в беседе нет сообщений
 		if (renderedIds.size === 0 && !messagesEl.querySelector('.row.visitor')) {
 			if (!greeting.isConnected) messagesEl.appendChild(greeting)
 		} else {
@@ -744,11 +799,18 @@
 
 	function sendMessage() {
 		const text = input.value.trim()
-		if (!text) return
+		if (text && sendText(text)) {
+			input.value = ''
+			autosize()
+		}
+	}
+
+	// отправка от имени посетителя; false — нет соединения (черновик не трогаем)
+	function sendText(text) {
 		if (!ws || ws.readyState !== WebSocket.OPEN) {
 			// нет соединения: не теряем текст, баннер уже объясняет причину
 			banner.hidden = false
-			return
+			return false
 		}
 		const clientId = `${Date.now().toString(36)}-${++sendSeq}`
 		abortDictation()
@@ -756,8 +818,7 @@
 		trackPending(renderMessage({ sender: 'visitor', text, replyTo: replyTarget }), clientId)
 		ws.send(JSON.stringify({ text, clientId, ...(replyToId ? { replyToId } : {}) }))
 		cancelReply()
-		input.value = ''
-		autosize()
+		return true
 	}
 
 	// --- диктовка (речь → текст, распознаёт браузер) ----------------------------
