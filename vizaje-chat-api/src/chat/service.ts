@@ -157,14 +157,16 @@ const unreadCountExpr = () => sql`(
 // Беседы, отсортированные по последней активности, с последним сообщением
 // и числом непрочитанных сообщений посетителя.
 // status — только открытые/закрытые; unread — только с непрочитанными;
-// assignee: 'me' — назначенные на meId, 'unassigned' — без назначения
+// assignee: 'me' — назначенные на meId, 'unassigned' — без назначения;
+// q — по тексту сообщений (вся история беседы) и sessionId, регистронезависимо
 export async function getConversations({
 	limit,
 	offset,
 	status,
 	unread,
 	assignee,
-	meId
+	meId,
+	q
 }: {
 	limit?: number
 	offset?: number
@@ -172,6 +174,7 @@ export async function getConversations({
 	unread?: boolean
 	assignee?: 'me' | 'unassigned'
 	meId?: number
+	q?: string
 } = {}) {
 	const size = Math.min(
 		Math.max(Math.trunc(limit ?? DEFAULT_CONVERSATIONS_LIMIT), 1),
@@ -184,6 +187,19 @@ export async function getConversations({
 		where m.conversation_id = ${convId}
 		order by m.id desc limit 1
 	)`
+
+	// экранируем спецсимволы ILIKE, чтобы "%" или "_" в запросе не вели себя как маска
+	const term = q?.trim()
+	const likePattern = term && `%${term.replace(/[\\%_]/g, '\\$&')}%`
+	const searchCondition = likePattern
+		? sql`(
+			${conversations.sessionId} ilike ${likePattern} escape '\\'
+			or exists (
+				select 1 from messages m
+				where m.conversation_id = ${convId} and m.text ilike ${likePattern} escape '\\'
+			)
+		)`
+		: undefined
 
 	return db
 		.select({
@@ -216,7 +232,8 @@ export async function getConversations({
 				assignee === 'unassigned' ? isNull(conversations.assigneeId) : undefined,
 				assignee === 'me' && meId != null
 					? eq(conversations.assigneeId, meId)
-					: undefined
+					: undefined,
+				searchCondition
 			)
 		)
 		.orderBy(

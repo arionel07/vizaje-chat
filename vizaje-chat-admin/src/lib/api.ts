@@ -69,8 +69,14 @@ export async function fetchConversations(
 	{
 		limit = CONVERSATIONS_PAGE_SIZE,
 		offset = 0,
-		filter = 'all'
-	}: { limit?: number; offset?: number; filter?: ConversationFilter } = {}
+		filter = 'all',
+		q
+	}: {
+		limit?: number
+		offset?: number
+		filter?: ConversationFilter
+		q?: string // поиск по тексту сообщений (вся история) и sessionId
+	} = {}
 ) {
 	const params = new URLSearchParams({
 		limit: String(limit),
@@ -79,6 +85,7 @@ export async function fetchConversations(
 	if (filter === 'open' || filter === 'closed') params.set('status', filter)
 	if (filter === 'unread') params.set('unread', 'true')
 	if (filter === 'mine') params.set('assignee', 'me')
+	if (q?.trim()) params.set('q', q.trim())
 	const res = await fetch(`${API_URL}/admin/conversations?${params}`, {
 		headers: { Authorization: `Bearer ${token}` }
 	})

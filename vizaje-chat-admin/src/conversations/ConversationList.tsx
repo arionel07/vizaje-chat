@@ -1,4 +1,4 @@
-import { CircleAlert, Lock, LogOut, MessageSquare, User } from 'lucide-react'
+import { CircleAlert, Lock, LogOut, MessageSquare, Search, User, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
 	CONVERSATIONS_PAGE_SIZE,
@@ -42,6 +42,7 @@ function conversationStub(id: number): Conversation {
 
 const MAX_RELOAD = 100 // максимум, который отдаёт API за один запрос
 const TYPING_SHOW_MS = 5000
+const SEARCH_DEBOUNCE_MS = 350
 
 const FILTERS: { id: ConversationFilter; label: string }[] = [
 	{ id: 'all', label: 'Все' },
@@ -85,6 +86,10 @@ export function ConversationList({
 	const [conversations, setConversations] = useState<Conversation[]>([])
 	const [counts, setCounts] = useState<ConversationCounts | null>(null)
 	const [filter, setFilter] = useState<ConversationFilter>('all')
+	// searchInput — то, что видно в поле; search — применённое (после debounce) значение
+	const [searchInput, setSearchInput] = useState('')
+	const [search, setSearch] = useState('')
+	const searchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const [hasMore, setHasMore] = useState(false)
 	const [loading, setLoading] = useState(true)
 	const [loadingMore, setLoadingMore] = useState(false)
@@ -143,7 +148,7 @@ export function ConversationList({
 		)
 		try {
 			const [page, newCounts] = await Promise.all([
-				fetchConversations(token, { limit, filter }),
+				fetchConversations(token, { limit, filter, q: search }),
 				fetchCounts(token)
 			])
 			if (requestId !== requestRef.current) return
@@ -160,7 +165,7 @@ export function ConversationList({
 		} finally {
 			if (requestId === requestRef.current) setLoading(false)
 		}
-	}, [token, filter])
+	}, [token, filter, search])
 
 	// несколько событий подряд (или отправка своего сообщения) — одна перезагрузка
 	const scheduleReload = useCallback(() => {
@@ -174,6 +179,30 @@ export function ConversationList({
 		setLoading(true)
 		setFilter(next)
 	}
+
+	// debounce: не долбим бэкенд на каждую нажатую букву
+	function handleSearchInput(value: string) {
+		setSearchInput(value)
+		clearTimeout(searchTimerRef.current)
+		searchTimerRef.current = setTimeout(() => {
+			countRef.current = 0 // новый поиск — начинаем с первой страницы
+			setLoading(true)
+			setSearch(value.trim())
+		}, SEARCH_DEBOUNCE_MS)
+	}
+
+	// крестик в поле — очищает сразу, не дожидаясь debounce
+	function clearSearch() {
+		clearTimeout(searchTimerRef.current)
+		setSearchInput('')
+		if (search) {
+			countRef.current = 0
+			setLoading(true)
+			setSearch('')
+		}
+	}
+
+	useEffect(() => () => clearTimeout(searchTimerRef.current), [])
 
 	useEffect(() => {
 		reload().catch(() => {})
@@ -247,7 +276,8 @@ export function ConversationList({
 		try {
 			const page = await fetchConversations(token, {
 				offset: countRef.current,
-				filter
+				filter,
+				q: search
 			})
 			countRef.current += page.length
 			setConversations(prev => [...prev, ...page])
@@ -277,6 +307,33 @@ export function ConversationList({
 					</button>
 				</div>
 			</header>
+
+			<div className="px-4 pb-3">
+				<div className="relative">
+					<Search
+						aria-hidden="true"
+						className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
+					/>
+					<input
+						type="text"
+						value={searchInput}
+						onChange={e => handleSearchInput(e.target.value)}
+						placeholder="Поиск по перепискам…"
+						aria-label="Поиск по беседам"
+						className="h-10 w-full rounded-lg border border-zinc-300 bg-white pl-9 pr-9 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/15 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-300 dark:focus:ring-zinc-300/20"
+					/>
+					{searchInput && (
+						<button
+							type="button"
+							onClick={clearSearch}
+							aria-label="Очистить поиск"
+							className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+						>
+							<X aria-hidden="true" className="h-4 w-4" />
+						</button>
+					)}
+				</div>
+			</div>
 
 			<div
 				role="group"
@@ -337,7 +394,7 @@ export function ConversationList({
 				{!loading && !loadFailed && conversations.length === 0 && (
 					<div className="flex flex-col items-center gap-3 px-6 py-16 text-center text-zinc-500 dark:text-zinc-400">
 						<MessageSquare aria-hidden="true" className="h-10 w-10" />
-						<p className="text-base">Нет бесед</p>
+						<p className="text-base">{search ? 'Ничего не найдено' : 'Нет бесед'}</p>
 					</div>
 				)}
 

@@ -22,7 +22,8 @@ const conversationsQuery = t.Object({
 	offset: t.Optional(t.Numeric()),
 	status: t.Optional(t.Union([t.Literal('open'), t.Literal('closed')])),
 	unread: t.Optional(t.BooleanString()),
-	assignee: t.Optional(t.Union([t.Literal('me'), t.Literal('unassigned')]))
+	assignee: t.Optional(t.Union([t.Literal('me'), t.Literal('unassigned')])),
+	q: t.Optional(t.String())
 })
 
 export const conversationsRoutes = new Elysia()
