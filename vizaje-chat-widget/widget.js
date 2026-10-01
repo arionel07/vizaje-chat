@@ -12,8 +12,15 @@
  *                 Также решает, на каком языке ответит бот при автоответах
  *                 (RO, если начинается с "ro", иначе RU)
  *   data-greeting      — приветствие в пустом чате (по умолчанию «Привет! 👋 Чем мы можем помочь?»)
+ *   data-subtitle      — подзаголовок под заголовком в шапке панели
+ *                        (по умолчанию «Наша команда также может помочь»)
  *   data-quick-replies — быстрые вопросы под приветствием через запятую, до 4 штук:
  *                        "Есть ли в наличии?,Сроки доставки,Как оформить возврат"
+ *   data-privacy-url   — ссылка на политику конфиденциальности; если задана, под полем
+ *                        ввода появляется строка «Отправляя сообщение, вы соглашаетесь
+ *                        с ...» со ссылкой (без атрибута строка не показывается —
+ *                        нечем её подкрепить)
+ *   data-privacy-text  — текст ссылки в этой строке (по умолчанию «Политикой конфиденциальности»)
  *   data-proactive-message — текст приглашения, которое само всплывает рядом с кнопкой
  *                        чата через data-proactive-delay секунд; без него фича выключена.
  *                        Не показывается, если чат уже открывали в этой вкладке, у
@@ -41,6 +48,9 @@
 	const LANG = cfg.lang || 'ru-RU'
 	const BOT_LANG = LANG.toLowerCase().startsWith('ro') ? 'ro' : 'ru'
 	const GREETING = (cfg.greeting || '').trim() || 'Привет! 👋 Чем мы можем помочь?'
+	const SUBTITLE = (cfg.subtitle || '').trim() || 'Наша команда также может помочь'
+	const PRIVACY_URL = (cfg.privacyUrl || '').trim()
+	const PRIVACY_TEXT = (cfg.privacyText || '').trim() || 'Политикой конфиденциальности'
 	const MAX_QUICK_REPLIES = 4
 	const QUICK_REPLIES = (cfg.quickReplies || '')
 		.split(',')
@@ -103,10 +113,13 @@
 		'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
 		20
 	)
-	const ICON_AVATAR = svg(
-		'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
-		20
-	)
+	// 2×2 сетка точек — тайл-«логотип» в шапке и в превью нового сообщения
+	const ICON_GRID = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+<circle cx="7" cy="7" r="3.2" fill="currentColor"/><circle cx="17" cy="7" r="3.2" fill="currentColor"/>
+<circle cx="7" cy="17" r="3.2" fill="currentColor"/><circle cx="17" cy="17" r="3.2" fill="currentColor"/></svg>`
+	const ICON_MORE = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+<circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/>
+<circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg>`
 
 	// --- разметка и стили (Shadow DOM: стили сайта и виджета не пересекаются) --
 	const host = document.createElement('div')
@@ -123,7 +136,8 @@
   :host { all: initial;
     --bg: #ffffff; --fg: #18181b; --muted: #71717a; --surface: #f4f4f5; --border: #e4e4e7;
     --brand: #18181b; --brand-fg: #ffffff; --ring: #18181b; --danger: #dc2626;
-    --launcher-bg: #ffffff; --launcher-fg: #18181b; --shadow: 0 12px 48px rgba(0,0,0,.22);
+    /* лаунчер и тайл-«логотип» всегда чёрные, независимо от темы — так на референсе */
+    --launcher-bg: #000000; --launcher-fg: #ffffff; --shadow: 0 12px 48px rgba(0,0,0,.22);
     color-scheme: light; }
   :host([data-theme="dark"]) {
     --bg: #17181c; --fg: #f4f4f5; --muted: #a1a1aa; --surface: #2a2b31; --border: #2e2f36;
@@ -165,7 +179,8 @@
   .toast-title { font-weight: 600; }
   .toast-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; }
   .toast-meta { font-size: 12px; color: var(--muted); }
-  .avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--brand); color: var(--brand-fg);
+  /* тайл-«логотип»: всегда чёрный с белой иконкой, как лаунчер — независимо от темы */
+  .avatar { flex: none; width: 36px; height: 36px; border-radius: 10px; background: var(--launcher-bg); color: var(--launcher-fg);
     display: flex; align-items: center; justify-content: center; }
 
   /* проактивное приглашение над лаунчером (тот же слот, что у .toast — одновременно не показываются) */
@@ -181,7 +196,7 @@
   .panel { display: none; flex-direction: column; right: max(var(--vz-offset-x, 20px), env(safe-area-inset-right));
     bottom: calc(max(var(--vz-offset-y, 20px), env(safe-area-inset-bottom)) + 76px); width: 400px; max-width: calc(100vw - 32px);
     height: min(680px, calc(100dvh - 96px - var(--vz-offset-y, 20px))); background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 24px; box-shadow: var(--shadow); overflow: hidden; }
+    border-radius: 24px; box-shadow: var(--shadow); overflow: hidden; }
   .root.open .panel { display: flex; animation: pop .2s ease-out; }
   .root.left .launcher, .root.left .toast, .root.left .panel, .root.left .proactive { right: auto; left: max(var(--vz-offset-x, 20px), env(safe-area-inset-left)); }
   .head { display: flex; align-items: center; gap: 12px; padding: 14px 12px 14px 16px; border-bottom: 1px solid var(--border); }
@@ -190,6 +205,12 @@
   .sub { font-size: 13px; color: var(--muted); }
   .icon-btn { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
   .icon-btn:hover { background: var(--surface); color: var(--fg); }
+  .menu { position: relative; }
+  .menu-list { position: absolute; top: calc(100% + 4px); right: 0; min-width: 190px; padding: 6px; border-radius: 14px;
+    background: var(--bg); border: 1px solid var(--border); box-shadow: var(--shadow); z-index: 1; }
+  .menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 10px; border-radius: 9px;
+    font-size: 14px; text-align: left; color: var(--fg); }
+  .menu-item:hover { background: var(--surface); }
   .banner { padding: 8px 16px; font-size: 13px; text-align: center; color: var(--danger); background: var(--surface); }
   .offline-banner { padding: 8px 16px; font-size: 13px; text-align: center; color: var(--muted); background: var(--surface); border-bottom: 1px solid var(--border); }
 
@@ -197,9 +218,9 @@
   .row { display: flex; flex-direction: column; max-width: 85%; }
   .row.visitor { align-self: flex-end; align-items: flex-end; }
   .row.agent { align-self: flex-start; align-items: flex-start; }
-  .bubble { padding: 10px 14px; border-radius: 18px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; }
-  .row.visitor .bubble { background: var(--brand); color: var(--brand-fg); border-bottom-right-radius: 6px; }
-  .row.agent .bubble { background: var(--surface); border-bottom-left-radius: 6px; }
+  .bubble { padding: 12px 16px; border-radius: 20px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; }
+  .row.visitor .bubble { background: var(--brand); color: var(--brand-fg); }
+  .row.agent .bubble { background: var(--surface); }
   .row.failed .bubble { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
   .meta { margin: 3px 4px 0; font-size: 11px; color: var(--muted); }
   .row.failed .meta { color: var(--danger); }
@@ -222,7 +243,7 @@
   .quote-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; opacity: .85; }
   .row.flash .bubble { animation: flash 1.3s ease-out; }
   @keyframes flash { 0%, 50% { box-shadow: 0 0 0 3px var(--ring); } 100% { box-shadow: 0 0 0 3px transparent; } }
-  .emoji-btn { flex: none; width: 42px; height: 42px; border-radius: 50%; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+  .emoji-btn { flex: none; width: 34px; height: 34px; border-radius: 50%; color: var(--muted); display: flex; align-items: center; justify-content: center; }
   .emoji-btn:hover, .emoji-btn[aria-expanded="true"] { background: var(--surface); color: var(--fg); }
   .emoji-panel { display: flex; flex-direction: column; height: 240px; border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
   .emoji-tabs { display: flex; gap: 2px; padding: 6px 8px; border-bottom: 1px solid var(--border); overflow-x: auto; }
@@ -232,8 +253,9 @@
   .emoji { height: 38px; border-radius: 8px; font-size: 24px; line-height: 1; }
   .emoji:hover { background: var(--surface); }
   .emoji-empty { grid-column: 1 / -1; padding: 24px 8px; text-align: center; font-size: 13px; color: var(--muted); }
-  .root.emoji-open .composer { padding-bottom: 12px; }
-  .mic-btn { flex: none; width: 42px; height: 42px; border-radius: 50%; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+  .root.emoji-open .composer { padding-bottom: 10px; }
+  .root.emoji-open .privacy { display: none; }
+  .mic-btn { flex: none; width: 34px; height: 34px; border-radius: 50%; color: var(--muted); display: flex; align-items: center; justify-content: center; }
   .mic-btn:hover { background: var(--surface); color: var(--fg); }
   .mic-btn .ic-stop { display: none; }
   .mic-btn.listening { background: #ef4444; color: #fff; animation: pulse 1.4s ease-out infinite; }
@@ -255,14 +277,19 @@
   .load-more { align-self: center; margin-bottom: 8px; padding: 6px 14px; border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 12px; }
   .load-more:disabled { opacity: .6; cursor: default; }
 
-  .composer { display: flex; align-items: flex-end; gap: 8px; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); }
-  .input { flex: 1; min-width: 0; resize: none; max-height: ${MAX_INPUT_HEIGHT}px; min-height: 42px; padding: 10px 16px;
-    border: 1px solid var(--border); border-radius: 21px; background: var(--bg); color: var(--fg); font-size: 16px; line-height: 1.35; outline: none; }
+  .composer { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); }
+  .composer-box { border: 1px solid var(--border); border-radius: 20px; padding: 10px 10px 8px 14px; transition: border-color .15s; }
+  .composer-box:focus-within { border-color: var(--ring); }
+  .input { display: block; width: 100%; resize: none; max-height: ${MAX_INPUT_HEIGHT}px; min-height: 24px; padding: 0;
+    border: 0; background: transparent; color: var(--fg); font-size: 16px; line-height: 1.35; outline: none; }
   .input::placeholder { color: var(--muted); }
-  .input:focus { border-color: var(--ring); }
-  .send { flex: none; width: 42px; height: 42px; border-radius: 50%; background: var(--brand); color: var(--brand-fg);
+  .composer-row { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+  .composer-icons { display: flex; align-items: center; gap: 2px; }
+  .send { flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--brand); color: var(--brand-fg);
     display: flex; align-items: center; justify-content: center; transition: opacity .15s; }
   .send:disabled { opacity: .35; cursor: default; }
+  .privacy { margin: 0; padding: 0 16px calc(10px + env(safe-area-inset-bottom)); font-size: 11px; line-height: 1.4; text-align: center; color: var(--muted); }
+  .privacy a { color: inherit; text-decoration: underline; }
 
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { .toast, .proactive, .root.open .panel, .typing .dot, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } }
@@ -281,7 +308,7 @@
 </style>
 <div class="root">
   <button class="toast" type="button" hidden>
-    <span class="avatar">${ICON_AVATAR}</span>
+    <span class="avatar">${ICON_GRID}</span>
     <span class="toast-body">
       <span class="toast-title"></span>
       <span class="toast-text"></span>
@@ -298,9 +325,14 @@
 	}
   <section class="panel" role="dialog" aria-label="${TITLE.replace(/"/g, '&quot;')}">
     <header class="head">
-      <span class="avatar">${ICON_AVATAR}</span>
-      <div class="head-text"><div class="title"></div><div class="sub">Задайте вопрос — мы ответим здесь</div></div>
-      <button class="icon-btn download" type="button" aria-label="Скачать историю переписки">${ICON_DOWNLOAD}</button>
+      <span class="avatar">${ICON_GRID}</span>
+      <div class="head-text"><div class="title"></div><div class="sub">${SUBTITLE}</div></div>
+      <div class="menu">
+        <button class="icon-btn menu-btn" type="button" aria-label="Ещё" aria-haspopup="menu" aria-expanded="false">${ICON_MORE}</button>
+        <div class="menu-list" role="menu" hidden>
+          <button class="menu-item download" type="button" role="menuitem">${ICON_DOWNLOAD} Скачать историю</button>
+        </div>
+      </div>
       <button class="icon-btn close" type="button" aria-label="Свернуть чат">${ICON_CLOSE}</button>
     </header>
     <div class="banner" role="status" hidden>Нет соединения. Переподключаемся…</div>
@@ -312,15 +344,26 @@
       <button class="icon-btn reply-cancel" type="button" aria-label="Отменить ответ">${ICON_CLOSE}</button>
     </div>
     <form class="composer">
-      <button class="emoji-btn" type="button" aria-label="Эмодзи" aria-expanded="false" aria-controls="emoji-panel">${ICON_SMILE}</button>
-      <textarea class="input" rows="1" placeholder="Задать вопрос…" aria-label="Сообщение"></textarea>
-      <button class="mic-btn" type="button" aria-label="Надиктовать сообщение" aria-pressed="false" title="Голосовой ввод: речь распознаёт ваш браузер" hidden><span class="ic-mic">${ICON_MIC}</span><span class="ic-stop">${ICON_STOP}</span></button>
-      <button class="send" type="submit" aria-label="Отправить" disabled>${ICON_SEND}</button>
+      <div class="composer-box">
+        <textarea class="input" rows="1" placeholder="Задать вопрос…" aria-label="Сообщение"></textarea>
+        <div class="composer-row">
+          <div class="composer-icons">
+            <button class="emoji-btn" type="button" aria-label="Эмодзи" aria-expanded="false" aria-controls="emoji-panel">${ICON_SMILE}</button>
+            <button class="mic-btn" type="button" aria-label="Надиктовать сообщение" aria-pressed="false" title="Голосовой ввод: речь распознаёт ваш браузер" hidden><span class="ic-mic">${ICON_MIC}</span><span class="ic-stop">${ICON_STOP}</span></button>
+          </div>
+          <button class="send" type="submit" aria-label="Отправить" disabled>${ICON_SEND}</button>
+        </div>
+      </div>
     </form>
     <div class="emoji-panel" id="emoji-panel" hidden>
       <div class="emoji-tabs" role="tablist" aria-label="Категории эмодзи"></div>
       <div class="emoji-grid" role="tabpanel"></div>
     </div>
+    ${
+			PRIVACY_URL
+				? `<p class="privacy">Отправляя сообщение, вы соглашаетесь с <a href="${PRIVACY_URL.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer"></a></p>`
+				: ''
+		}
   </section>
   <button class="launcher" type="button" aria-label="Открыть чат" aria-expanded="false">
     <span class="ic-chat">${ICON_BUBBLE}</span><span class="ic-close">${ICON_CHEVRON}</span>
@@ -340,7 +383,10 @@
 	if (proactiveText) proactiveText.textContent = PROACTIVE_MESSAGE
 	const panel = $('.panel')
 	const closeBtn = $('.close')
-	const downloadBtn = $('.download')
+	const menuWrap = $('.menu')
+	const menuBtn = $('.menu-btn')
+	const menuList = $('.menu-list')
+	const downloadItem = $('.menu-item.download')
 	const banner = $('.banner')
 	const offlineBanner = $('.offline-banner')
 	const messagesEl = $('.messages')
@@ -354,6 +400,8 @@
 	const emojiGrid = $('.emoji-grid')
 	const input = $('.input')
 	const sendBtn = $('.send')
+	const privacyLink = $('.privacy a')
+	if (privacyLink) privacyLink.textContent = PRIVACY_TEXT
 	$('.title').textContent = TITLE
 
 	// --- состояние ------------------------------------------------------------
@@ -396,7 +444,10 @@
 	const greetingBubble = document.createElement('div')
 	greetingBubble.className = 'bubble'
 	greetingBubble.textContent = GREETING
-	greetingRow.appendChild(greetingBubble)
+	const greetingMeta = document.createElement('div')
+	greetingMeta.className = 'meta'
+	greetingMeta.textContent = `${TITLE} • Только что`
+	greetingRow.append(greetingBubble, greetingMeta)
 	greeting.appendChild(greetingRow)
 	if (QUICK_REPLIES.length) {
 		const quick = document.createElement('div')
@@ -1193,7 +1244,22 @@
 	}
 	launcher.addEventListener('click', () => (isOpen ? closeChat() : openChat()))
 	closeBtn.addEventListener('click', closeChat)
-	downloadBtn.addEventListener('click', exportHistory)
+	function setMenuOpen(open) {
+		menuList.hidden = !open
+		menuBtn.setAttribute('aria-expanded', String(open))
+	}
+	menuBtn.addEventListener('click', () => setMenuOpen(menuList.hidden))
+	downloadItem.addEventListener('click', () => {
+		setMenuOpen(false)
+		exportHistory()
+	})
+	// клик вне меню или Escape — закрыть
+	document.addEventListener('click', e => {
+		if (!menuList.hidden && !e.composedPath().includes(menuWrap)) setMenuOpen(false)
+	})
+	root.addEventListener('keydown', e => {
+		if (e.key === 'Escape' && !menuList.hidden) setMenuOpen(false)
+	})
 	toast.addEventListener('click', openChat)
 	loadMoreBtn.addEventListener('click', loadOlder)
 
