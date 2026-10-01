@@ -284,6 +284,56 @@ export async function deleteCannedResponse(token: string, id: number) {
 	await parseOrThrow<{ ok: true }>(res)
 }
 
+export type BotResponse = {
+	id: number
+	triggerText: string
+	answerRu: string
+	answerRo: string
+	createdAt: string
+}
+export type BotResponseInput = { triggerText: string; answerRu: string; answerRo: string }
+
+export async function fetchBotResponses(token: string) {
+	const res = await fetch(`${API_URL}/admin/bot-responses`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<BotResponse[]>(res)
+}
+
+export async function createBotResponse(token: string, input: BotResponseInput) {
+	const res = await fetch(`${API_URL}/admin/bot-responses`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify(input)
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<BotResponse>(res)
+}
+
+export async function updateBotResponse(
+	token: string,
+	id: number,
+	input: Partial<BotResponseInput>
+) {
+	const res = await fetch(`${API_URL}/admin/bot-responses/${id}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify(input)
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<BotResponse>(res)
+}
+
+export async function deleteBotResponse(token: string, id: number) {
+	const res = await fetch(`${API_URL}/admin/bot-responses/${id}`, {
+		method: 'DELETE',
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	await parseOrThrow<{ ok: true }>(res)
+}
+
 export type AnalyticsOverview = {
 	total: number
 	open: number

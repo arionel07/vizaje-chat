@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia'
 import jwt from 'jsonwebtoken'
 import { verifyToken } from '../auth/guard'
+import { findBotResponseByTrigger } from '../bot-responses/service'
 import { allowVisitorMessage } from '../chat/rate-limit'
 import {
 	addMessage,
@@ -45,6 +46,14 @@ function getClientId(body: unknown): string | undefined {
 	if (typeof body !== 'object' || body === null) return undefined
 	const id = (body as { clientId?: unknown }).clientId
 	return typeof id === 'string' ? id.slice(0, 64) : undefined
+}
+
+// язык посетителя (из data-lang виджета) — какой из answerRu/answerRo бот отдаст;
+// нераспознанное значение не ломает поток — просто отвечаем по-русски
+function getLang(body: unknown): 'ru' | 'ro' {
+	if (typeof body !== 'object' || body === null) return 'ru'
+	const lang = (body as { lang?: unknown }).lang
+	return lang === 'ro' ? 'ro' : 'ru'
 }
 
 function sendError(
@@ -165,6 +174,20 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			ws.publish(`conversation:${store.conversationId}`, payload)
 			ws.publish('admin:global', payload)
 			sendAck(ws, msg, clientId)
+
+			// точное совпадение с триггером (например, клик по quick-reply кнопке) —
+			// бот отвечает сам, без участия оператора; не совпало — ждёт оператора как раньше
+			const botResponse = await findBotResponseByTrigger(text)
+			if (botResponse) {
+				const lang = getLang(body)
+				const answer = lang === 'ro' ? botResponse.answerRo : botResponse.answerRu
+				const botMsg = await addMessage(store.conversationId, 'bot', answer)
+				const botPayload = JSON.stringify(botMsg)
+				ws.publish(`conversation:${store.conversationId}`, botPayload)
+				ws.publish('admin:global', botPayload)
+				// ws.publish не шлёт отправителю его же публикацию, а получатель бота — он и есть
+				ws.send(botPayload)
+			}
 		}
 
 		if (store.type === 'admin') {

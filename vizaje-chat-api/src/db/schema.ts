@@ -77,3 +77,13 @@ export const cannedResponses = pgTable('canned_responses', {
 	textRo: text('text_ro').notNull(),
 	createdAt: timestamp('created_at').defaultNow().notNull()
 })
+
+// автоответы бота: triggerText — точный текст сообщения/quick-reply кнопки,
+// по которому бот отвечает сам, без участия оператора
+export const botResponses = pgTable('bot_responses', {
+	id: serial('id').primaryKey(),
+	triggerText: text('trigger_text').notNull(),
+	answerRu: text('answer_ru').notNull(),
+	answerRo: text('answer_ro').notNull(),
+	createdAt: timestamp('created_at').defaultNow().notNull()
+})

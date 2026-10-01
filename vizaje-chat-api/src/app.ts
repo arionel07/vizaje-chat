@@ -3,6 +3,7 @@ import { Elysia } from 'elysia'
 import { ALLOWED_ORIGINS } from './config'
 import { analyticsRoutes } from './routes/analytics.routes'
 import { authRoutes } from './routes/auth.routes'
+import { botResponsesRoutes } from './routes/bot-responses.routes'
 import { cannedResponsesRoutes } from './routes/canned-responses.routes'
 import { conversationsRoutes } from './routes/conversations.routes'
 import { settingsRoutes } from './routes/settings.routes'
@@ -27,6 +28,7 @@ export function createApp() {
 		.use(conversationsRoutes)
 		.use(settingsRoutes)
 		.use(cannedResponsesRoutes)
+		.use(botResponsesRoutes)
 		.use(analyticsRoutes)
 		.use(wsRoutes)
 }

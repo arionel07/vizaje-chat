@@ -1,5 +1,6 @@
 import {
 	ArrowLeft,
+	Bot,
 	Check,
 	Lock,
 	MessageSquareText,
@@ -53,7 +54,8 @@ const LONG_PRESS_MS = 450 // долгое нажатие на сообщение
 const QUOTE_LENGTH = 200
 const MAX_SEARCH_PAGES = 10 // сколько страниц истории подгружать в поисках исходного сообщения
 
-const authorLabel = (sender: string) => (sender === 'admin' ? 'Вы' : 'Посетитель')
+const authorLabel = (sender: string) =>
+	sender === 'admin' ? 'Вы' : sender === 'bot' ? 'Бот' : 'Посетитель'
 
 // Компонент нужно монтировать с key={conversation.id}: состояние привязано к беседе
 export function ChatWindow({
@@ -598,12 +600,15 @@ export function ChatWindow({
 									)}
 								</div>
 								<span
-									className={`mt-0.5 px-1 text-[11px] ${
+									className={`mt-0.5 flex items-center gap-1 px-1 text-[11px] ${
 										m.failed
 											? 'text-red-600 dark:text-red-400'
 											: 'text-zinc-400 dark:text-zinc-500'
 									}`}
 								>
+									{m.sender === 'bot' && (
+										<Bot aria-label="Автоответ бота" className="h-3 w-3 shrink-0" />
+									)}
 									{m.failed
 										? 'Не отправлено'
 										: `${formatTime(m.createdAt)}${m.id === lastReadAdminId ? ' · Прочитано' : ''}`}

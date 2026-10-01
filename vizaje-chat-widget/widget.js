@@ -8,7 +8,10 @@
  *   data-title  — заголовок панели (по умолчанию «Поддержка Vizaje-Nica»)
  *   data-agent  — подпись сотрудника под сообщениями (по умолчанию «Поддержка»)
  *   data-lang   — язык диктовки (по умолчанию ru-RU); кнопка микрофона есть только
- *                 в браузерах с распознаванием речи (Chrome, Edge, Safari)
+ *                 в браузерах с распознаванием речи (Chrome, Edge, Safari).
+ *                 Также решает, на каком языке ответит бот при автоответах
+ *                 (RO, если начинается с "ro", иначе RU)
+
  *   data-greeting      — приветствие в пустом чате (по умолчанию «Привет! 👋 Чем мы можем помочь?»)
  *   data-quick-replies — быстрые вопросы под приветствием через запятую, до 4 штук:
  *                        "Есть ли в наличии?,Сроки доставки,Как оформить возврат"
@@ -31,6 +34,7 @@
 	const AGENT = cfg.agent || 'Поддержка'
 	const THEME = ['light', 'dark'].includes(cfg.theme) ? cfg.theme : 'auto'
 	const LANG = cfg.lang || 'ru-RU'
+	const BOT_LANG = LANG.toLowerCase().startsWith('ro') ? 'ro' : 'ru'
 	const GREETING = (cfg.greeting || '').trim() || 'Привет! 👋 Чем мы можем помочь?'
 	const MAX_QUICK_REPLIES = 4
 	const QUICK_REPLIES = (cfg.quickReplies || '')
@@ -838,7 +842,14 @@
 		abortDictation()
 		const replyToId = replyTarget?.id
 		trackPending(renderMessage({ sender: 'visitor', text, replyTo: replyTarget }), clientId)
-		ws.send(JSON.stringify({ text, clientId, ...(replyToId ? { replyToId } : {}) }))
+		ws.send(
+			JSON.stringify({
+				text,
+				clientId,
+				lang: BOT_LANG,
+				...(replyToId ? { replyToId } : {})
+			})
+		)
 		cancelReply()
 		return true
 	}

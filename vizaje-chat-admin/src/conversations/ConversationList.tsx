@@ -491,7 +491,13 @@ export function ConversationList({
 												{typingIds.has(c.id)
 													? 'печатает…'
 													: c.lastMessageText
-														? `${c.lastMessageSender === 'admin' ? 'Вы: ' : ''}${c.lastMessageText}`
+														? `${
+																c.lastMessageSender === 'admin'
+																	? 'Вы: '
+																	: c.lastMessageSender === 'bot'
+																		? 'Бот: '
+																		: ''
+															}${c.lastMessageText}`
 														: 'Нет сообщений'}
 											</span>
 											{unread > 0 && (
