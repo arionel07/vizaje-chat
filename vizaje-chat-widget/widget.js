@@ -11,10 +11,15 @@
  *                 в браузерах с распознаванием речи (Chrome, Edge, Safari).
  *                 Также решает, на каком языке ответит бот при автоответах
  *                 (RO, если начинается с "ro", иначе RU)
-
  *   data-greeting      — приветствие в пустом чате (по умолчанию «Привет! 👋 Чем мы можем помочь?»)
  *   data-quick-replies — быстрые вопросы под приветствием через запятую, до 4 штук:
  *                        "Есть ли в наличии?,Сроки доставки,Как оформить возврат"
+ *   data-proactive-message — текст приглашения, которое само всплывает рядом с кнопкой
+ *                        чата через data-proactive-delay секунд; без него фича выключена.
+ *                        Не показывается, если чат уже открывали в этой вкладке, у
+ *                        посетителя уже есть сессия (писал раньше) или приглашение уже
+ *                        закрывали крестиком в этом заходе на сайт (sessionStorage)
+ *   data-proactive-delay   — задержка до показа приглашения, в секундах (по умолчанию 20)
  *   data-position      — bottom-right (по умолчанию) | bottom-left
  *   data-z-index       — z-index виджета (по умолчанию 999999)
  *   data-offset-bottom — отступ снизу в px (по умолчанию 20)
@@ -42,6 +47,10 @@
 		.map(t => t.trim())
 		.filter(Boolean)
 		.slice(0, MAX_QUICK_REPLIES)
+	const PROACTIVE_MESSAGE = (cfg.proactiveMessage || '').trim()
+	const proactiveDelay = Number.parseFloat(cfg.proactiveDelay)
+	const PROACTIVE_DELAY_MS =
+		(Number.isFinite(proactiveDelay) && proactiveDelay >= 0 ? proactiveDelay : 20) * 1000
 	const POSITION = cfg.position === 'bottom-left' ? 'bottom-left' : 'bottom-right'
 	const cssPx = (value, fallback) => {
 		const n = Number.parseFloat(value)
@@ -69,6 +78,7 @@
 	]
 	const RECENT_KEY = 'widget_emoji_recent'
 	const RECENT_MAX = 16
+	const PROACTIVE_DISMISSED_KEY = 'widget_proactive_dismissed'
 	const LONG_PRESS_MS = 450 // долгое нажатие на сообщение (телефон) — ответить
 	const QUOTE_LENGTH = 200
 
@@ -131,7 +141,7 @@
   :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
   .root { font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; color: var(--fg); }
-  .launcher, .toast, .panel { position: fixed; z-index: var(--vz-z, 999999); }
+  .launcher, .toast, .panel, .proactive { position: fixed; z-index: var(--vz-z, 999999); }
 
   /* кнопка-лаунчер */
   .launcher { right: max(var(--vz-offset-x, 20px), env(safe-area-inset-right)); bottom: max(var(--vz-offset-y, 20px), env(safe-area-inset-bottom));
@@ -158,13 +168,22 @@
   .avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--brand); color: var(--brand-fg);
     display: flex; align-items: center; justify-content: center; }
 
+  /* проактивное приглашение над лаунчером (тот же слот, что у .toast — одновременно не показываются) */
+  .proactive { right: max(var(--vz-offset-x, 20px), env(safe-area-inset-right)); bottom: calc(max(var(--vz-offset-y, 20px), env(safe-area-inset-bottom)) + 76px);
+    width: 280px; max-width: calc(100vw - 32px); display: flex; align-items: flex-start; gap: 4px; text-align: left;
+    padding: 14px 8px 14px 16px; border-radius: 20px; background: var(--bg); color: var(--fg);
+    border: 1px solid var(--border); box-shadow: var(--shadow); animation: pop .2s ease-out; }
+  .proactive-text { flex: 1; min-width: 0; font-size: 14px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; }
+  .proactive-close { flex: none; width: 28px; height: 28px; border-radius: 50%; color: var(--muted); }
+  .proactive-close:hover { background: var(--surface); color: var(--fg); }
+
   /* панель */
   .panel { display: none; flex-direction: column; right: max(var(--vz-offset-x, 20px), env(safe-area-inset-right));
     bottom: calc(max(var(--vz-offset-y, 20px), env(safe-area-inset-bottom)) + 76px); width: 400px; max-width: calc(100vw - 32px);
     height: min(680px, calc(100dvh - 96px - var(--vz-offset-y, 20px))); background: var(--bg); color: var(--fg);
     border: 1px solid var(--border); border-radius: 24px; box-shadow: var(--shadow); overflow: hidden; }
   .root.open .panel { display: flex; animation: pop .2s ease-out; }
-  .root.left .launcher, .root.left .toast, .root.left .panel { right: auto; left: max(var(--vz-offset-x, 20px), env(safe-area-inset-left)); }
+  .root.left .launcher, .root.left .toast, .root.left .panel, .root.left .proactive { right: auto; left: max(var(--vz-offset-x, 20px), env(safe-area-inset-left)); }
   .head { display: flex; align-items: center; gap: 12px; padding: 14px 12px 14px 16px; border-bottom: 1px solid var(--border); }
   .head-text { flex: 1; min-width: 0; }
   .title { font-weight: 600; font-size: 16px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -246,7 +265,7 @@
   .send:disabled { opacity: .35; cursor: default; }
 
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
-  @media (prefers-reduced-motion: reduce) { .toast, .root.open .panel, .typing .dot, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .toast, .proactive, .root.open .panel, .typing .dot, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } }
 
   @media (hover: none) and (pointer: coarse) {
     .reply-btn { display: none; }
@@ -269,6 +288,14 @@
       <span class="toast-meta"></span>
     </span>
   </button>
+  ${
+		PROACTIVE_MESSAGE
+			? `<div class="proactive" role="status" hidden>
+    <button class="proactive-text" type="button"></button>
+    <button class="icon-btn proactive-close" type="button" aria-label="Закрыть приглашение">${ICON_CLOSE}</button>
+  </div>`
+			: ''
+	}
   <section class="panel" role="dialog" aria-label="${TITLE.replace(/"/g, '&quot;')}">
     <header class="head">
       <span class="avatar">${ICON_AVATAR}</span>
@@ -307,6 +334,10 @@
 	const launcher = $('.launcher')
 	const badge = $('.badge')
 	const toast = $('.toast')
+	const proactive = $('.proactive')
+	const proactiveText = $('.proactive-text')
+	const proactiveClose = $('.proactive-close')
+	if (proactiveText) proactiveText.textContent = PROACTIVE_MESSAGE
 	const panel = $('.panel')
 	const closeBtn = $('.close')
 	const downloadBtn = $('.download')
@@ -327,15 +358,19 @@
 
 	// --- состояние ------------------------------------------------------------
 	let token = localStorage.getItem('widget_token')
+	// до создания сессии — есть ли уже токен (писал раньше); для проактивного приглашения
+	const hadExistingSession = !!token
 	let ws = null
 	let starting = false
 	let reconnectDelay = 1000
 	let isOpen = false
+	let hasOpenedChat = false // чат открывали в этой вкладке — приглашение больше не нужно
 	let oldestId = null
 	let maxId = 0
 	let hasMore = false
 	let unread = 0
 	let toastTimer
+	let proactiveTimer
 	let lastSeenId = Number(localStorage.getItem('widget_last_seen')) || 0
 	const renderedIds = new Set()
 	let sendSeq = 0
@@ -618,6 +653,34 @@
 		clearTimeout(toastTimer)
 		toast.hidden = true
 	}
+
+	// --- проактивное приглашение ------------------------------------------------
+	function hideProactive() {
+		clearTimeout(proactiveTimer)
+		if (proactive) proactive.hidden = true
+	}
+	function dismissProactive() {
+		hideProactive()
+		try {
+			sessionStorage.setItem(PROACTIVE_DISMISSED_KEY, '1')
+		} catch {}
+	}
+	function maybeShowProactive() {
+		if (hasOpenedChat || hadExistingSession) return
+		try {
+			if (sessionStorage.getItem(PROACTIVE_DISMISSED_KEY)) return
+		} catch {}
+		proactive.hidden = false
+	}
+	if (proactive) {
+		proactiveTimer = setTimeout(maybeShowProactive, PROACTIVE_DELAY_MS)
+		proactiveText.addEventListener('click', () => {
+			hideProactive()
+			openChat()
+		})
+		proactiveClose.addEventListener('click', dismissProactive)
+	}
+
 	function showToast(m) {
 		$('.toast-title').textContent = TITLE
 		$('.toast-text').textContent = m.text
@@ -828,6 +891,8 @@
 		rootEl.classList.toggle('open', open)
 		launcher.setAttribute('aria-expanded', String(open))
 		if (open) {
+			hasOpenedChat = true
+			hideProactive()
 			hideToast()
 			markSeen()
 			messagesEl.scrollTop = messagesEl.scrollHeight
