@@ -152,6 +152,20 @@ export async function fetchMessages(
 	>
 }
 
+// история беседы .txt файлом; имя берём из Content-Disposition сервера
+export async function exportConversation(token: string, conversationId: number) {
+	const res = await fetch(
+		`${API_URL}/admin/conversations/${conversationId}/export`,
+		{ headers: { Authorization: `Bearer ${token}` } }
+	)
+	handleUnauthorized(res)
+	assertOk(res)
+	const disposition = res.headers.get('content-disposition') || ''
+	const filename =
+		/filename="?([^"]+)"?/.exec(disposition)?.[1] || `conversation-${conversationId}.txt`
+	return { blob: await res.blob(), filename }
+}
+
 export async function updateStatus(
 	token: string,
 	conversationId: number,

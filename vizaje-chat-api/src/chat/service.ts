@@ -337,3 +337,55 @@ export async function updateConversationStatus(
 	publishMessage(conversationId, systemMessage)
 	return updated
 }
+
+// таймзона фиксированная, как в рабочем графике — экспорт не зависит от TZ сервера
+const EXPORT_TIMEZONE = 'Europe/Chisinau'
+const exportDateParts = new Intl.DateTimeFormat('ru-RU', {
+	timeZone: EXPORT_TIMEZONE,
+	day: '2-digit',
+	month: '2-digit',
+	year: 'numeric',
+	hour: '2-digit',
+	minute: '2-digit',
+	hour12: false
+})
+
+// "29.09.2026 09:47" — без запятой, которую ru-RU вставляет между датой и временем
+function formatExportDate(date: Date) {
+	const parts = exportDateParts.formatToParts(date)
+	const get = (type: string) => parts.find(p => p.type === type)?.value ?? ''
+	return `${get('day')}.${get('month')}.${get('year')} ${get('hour')}:${get('minute')}`
+}
+
+const EXPORT_SENDER_LABELS: Record<string, string> = {
+	visitor: 'Посетитель',
+	admin: 'Оператор',
+	bot: 'Бот'
+}
+
+// Вся история беседы простым текстом для скачивания; null — беседы нет.
+// Системные сообщения (смена статуса, назначение) — отдельной строкой без таймштампа,
+// остальные — "[дата время] Отправитель: текст", в хронологическом порядке
+export async function exportConversationText(conversationId: number) {
+	const exists = await conversationExists(conversationId)
+	if (!exists) return null
+
+	const rows = await db
+		.select({
+			sender: messages.sender,
+			text: messages.text,
+			createdAt: messages.createdAt
+		})
+		.from(messages)
+		.where(eq(messages.conversationId, conversationId))
+		.orderBy(messages.id)
+
+	const lines = rows.map(m =>
+		m.sender === 'system'
+			? `--- ${m.text} ---`
+			: `[${formatExportDate(m.createdAt)}] ${EXPORT_SENDER_LABELS[m.sender] ?? m.sender}: ${m.text}`
+	)
+
+	const header = `Беседа #${conversationId} — экспортировано ${formatExportDate(new Date())}`
+	return [header, '', ...lines].join('\n')
+}

@@ -89,6 +89,10 @@
 	)
 	const ICON_STOP = svg('<rect width="12" height="12" x="6" y="6" rx="2"/>', 22)
 	const ICON_REPLY = svg('<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>', 16)
+	const ICON_DOWNLOAD = svg(
+		'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+		20
+	)
 	const ICON_AVATAR = svg(
 		'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
 		20
@@ -269,6 +273,7 @@
     <header class="head">
       <span class="avatar">${ICON_AVATAR}</span>
       <div class="head-text"><div class="title"></div><div class="sub">Задайте вопрос — мы ответим здесь</div></div>
+      <button class="icon-btn download" type="button" aria-label="Скачать историю переписки">${ICON_DOWNLOAD}</button>
       <button class="icon-btn close" type="button" aria-label="Свернуть чат">${ICON_CLOSE}</button>
     </header>
     <div class="banner" role="status" hidden>Нет соединения. Переподключаемся…</div>
@@ -304,6 +309,7 @@
 	const toast = $('.toast')
 	const panel = $('.panel')
 	const closeBtn = $('.close')
+	const downloadBtn = $('.download')
 	const banner = $('.banner')
 	const offlineBanner = $('.offline-banner')
 	const messagesEl = $('.messages')
@@ -695,6 +701,30 @@
 					: 'Сейчас мы не в сети.'
 		} catch {
 			// сбой — молчим, лучше ничего не показать, чем соврать про офлайн
+		}
+	}
+
+	// скачать историю беседы .txt файлом; имя берём из Content-Disposition сервера
+	async function exportHistory() {
+		if (!token) return
+		try {
+			const res = await fetch(`${API_URL}/widget/export`, {
+				headers: { Authorization: `Bearer ${token}` }
+			})
+			if (!res.ok) return
+			const disposition = res.headers.get('content-disposition') || ''
+			const filename = /filename="?([^"]+)"?/.exec(disposition)?.[1] || 'conversation.txt'
+			const blob = await res.blob()
+			const url = URL.createObjectURL(blob)
+			const a = document.createElement('a')
+			a.href = url
+			a.download = filename
+			document.body.appendChild(a)
+			a.click()
+			a.remove()
+			URL.revokeObjectURL(url)
+		} catch {
+			// сеть недоступна — молча ничего не скачиваем
 		}
 	}
 
@@ -1098,6 +1128,7 @@
 	}
 	launcher.addEventListener('click', () => (isOpen ? closeChat() : openChat()))
 	closeBtn.addEventListener('click', closeChat)
+	downloadBtn.addEventListener('click', exportHistory)
 	toast.addEventListener('click', openChat)
 	loadMoreBtn.addEventListener('click', loadOlder)
 

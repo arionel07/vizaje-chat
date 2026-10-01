@@ -8,6 +8,7 @@ import {
 } from '../chat/rate-limit'
 import {
 	addMessage,
+	exportConversationText,
 	getAdminReadAt,
 	getMessages,
 	markVisitorRead,
@@ -115,3 +116,20 @@ export const widgetRoutes = new Elysia()
 			})
 		}
 	)
+	// вся история беседы текстовым файлом — кнопка «Скачать историю» в виджете
+	.get('/widget/export', async ({ headers, set }) => {
+		const session = verifySessionToken(headers.authorization)
+		if (!session) {
+			set.status = 401
+			return { error: 'Unauthorized' }
+		}
+		const text = await exportConversationText(session.conversationId)
+		if (!text) {
+			set.status = 404
+			return { error: 'Conversation not found' }
+		}
+		set.headers['content-type'] = 'text/plain; charset=utf-8'
+		set.headers['content-disposition'] =
+			`attachment; filename="conversation-${session.conversationId}.txt"`
+		return text
+	})

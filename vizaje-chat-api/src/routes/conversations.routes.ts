@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia'
 import { verifyToken } from '../auth/guard'
 import { publishToAdmins, publishToConversation } from '../chat/events'
 import {
+	exportConversationText,
 	getConversationCounts,
 	getConversations,
 	getMessages,
@@ -90,6 +91,24 @@ export const conversationsRoutes = new Elysia()
 		},
 		{ query: messagesQuery }
 	)
+	// вся история беседы текстовым файлом — кнопка «Скачать» в шапке чата
+	.get('/admin/conversations/:id/export', async ({ headers, params, set }) => {
+		const admin = verifyToken(headers.authorization)
+		if (!admin) {
+			set.status = 401
+			return { error: 'Unauthorized' }
+		}
+		const conversationId = Number(params.id)
+		const text = await exportConversationText(conversationId)
+		if (!text) {
+			set.status = 404
+			return { error: 'Conversation not found' }
+		}
+		set.headers['content-type'] = 'text/plain; charset=utf-8'
+		set.headers['content-disposition'] =
+			`attachment; filename="conversation-${conversationId}.txt"`
+		return text
+	})
 	.patch(
 		'/admin/conversations/:id/status',
 		async ({ headers, params, body, set }) => {

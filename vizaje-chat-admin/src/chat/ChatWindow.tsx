@@ -2,6 +2,7 @@ import {
 	ArrowLeft,
 	Bot,
 	Check,
+	Download,
 	Lock,
 	MessageSquareText,
 	Mic,
@@ -16,6 +17,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import {
+	exportConversation,
 	fetchMessages,
 	markRead,
 	MESSAGES_PAGE_SIZE,
@@ -85,6 +87,7 @@ export function ChatWindow({
 	const [loadingMore, setLoadingMore] = useState(false)
 	const [toggling, setToggling] = useState(false)
 	const [assigning, setAssigning] = useState(false)
+	const [exporting, setExporting] = useState(false)
 	const [visitorTyping, setVisitorTyping] = useState(false)
 	const [replyTarget, setReplyTarget] = useState<ReplyTo | null>(null)
 	const [emojiOpen, setEmojiOpen] = useState(false)
@@ -439,6 +442,26 @@ export function ChatWindow({
 		}
 	}
 
+	async function handleExport() {
+		if (exporting) return
+		setExporting(true)
+		try {
+			const { blob, filename } = await exportConversation(token, conversationId)
+			const url = URL.createObjectURL(blob)
+			const a = document.createElement('a')
+			a.href = url
+			a.download = filename
+			document.body.appendChild(a)
+			a.click()
+			a.remove()
+			URL.revokeObjectURL(url)
+		} catch {
+			// сеть недоступна — молча ничего не скачиваем
+		} finally {
+			setExporting(false)
+		}
+	}
+
 	async function handleAssign(value: string) {
 		if (assigning) return
 		const assigneeId = value ? Number(value) : null
@@ -497,6 +520,16 @@ export function ChatWindow({
 						</option>
 					))}
 				</select>
+				<button
+					type="button"
+					onClick={handleExport}
+					disabled={exporting}
+					aria-label="Скачать историю переписки"
+					title="Скачать историю переписки"
+					className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-transparent text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
+				>
+					<Download aria-hidden="true" className="h-4 w-4" />
+				</button>
 				<button
 					type="button"
 					onClick={toggleStatus}
