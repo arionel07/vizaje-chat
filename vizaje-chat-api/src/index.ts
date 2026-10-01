@@ -1,17 +1,9 @@
-import { cors } from '@elysiajs/cors'
-import { Elysia } from 'elysia'
-import { authRoutes } from './routes/auth.routes'
-import { conversationsRoutes } from './routes/conversations.routes'
-import { widgetRoutes } from './routes/widget.routes'
-import { wsRoutes } from './routes/ws.routes'
+import { createApp } from './app'
+import { setPublisher } from './chat/events'
+import { PORT } from './config'
 
-const app = new Elysia()
-	.use(cors({ origin: true, credentials: true }))
-	.get('/health', () => ({ status: 'ok' }))
-	.use(authRoutes)
-	.use(widgetRoutes)
-	.use(conversationsRoutes)
-	.use(wsRoutes)
-	.listen(3001)
+const app = createApp().listen(PORT)
+
+setPublisher((room, payload) => app.server?.publish(room, payload))
 
 console.log(`🦊 running at http://localhost:${app.server?.port}`)
