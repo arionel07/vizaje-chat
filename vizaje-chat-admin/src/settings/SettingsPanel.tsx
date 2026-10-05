@@ -3,12 +3,14 @@ import { useState } from 'react'
 import { BotResponsesSettings } from './BotResponsesSettings'
 import { CannedResponsesSettings } from './CannedResponsesSettings'
 import { ScheduleSettings } from './ScheduleSettings'
+import { ThemeSettings } from './ThemeSettings'
 
-type Tab = 'schedule' | 'canned' | 'bot'
+type Tab = 'schedule' | 'canned' | 'bot' | 'theme'
 const TABS: { id: Tab; label: string }[] = [
 	{ id: 'schedule', label: 'Рабочий график' },
 	{ id: 'canned', label: 'Шаблоны ответов' },
-	{ id: 'bot', label: 'Ответы бота' }
+	{ id: 'bot', label: 'Ответы бота' },
+	{ id: 'theme', label: 'Тема виджета' }
 ]
 
 export function SettingsPanel({
@@ -64,8 +66,10 @@ export function SettingsPanel({
 					<ScheduleSettings token={token} />
 				) : tab === 'canned' ? (
 					<CannedResponsesSettings token={token} onChange={onCannedResponsesChange} />
-				) : (
+				) : tab === 'bot' ? (
 					<BotResponsesSettings token={token} />
+				) : (
+					<ThemeSettings token={token} />
 				)}
 			</div>
 		</div>

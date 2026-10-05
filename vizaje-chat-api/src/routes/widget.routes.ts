@@ -14,7 +14,12 @@ import {
 	markVisitorRead,
 	replyTargetExists
 } from '../chat/service'
-import { getSchedule, getStatus, summarizeSchedule } from '../settings/service'
+import {
+	getSchedule,
+	getStatus,
+	getWidgetTheme,
+	summarizeSchedule
+} from '../settings/service'
 import { createSession, verifySessionToken } from '../widget/service'
 
 export const widgetRoutes = new Elysia()
@@ -22,6 +27,11 @@ export const widgetRoutes = new Elysia()
 	.get('/widget/status', async () => {
 		const schedule = await getSchedule()
 		return { ...getStatus(schedule), scheduleSummary: summarizeSchedule(schedule) }
+	})
+	// публичная конфигурация виджета (пока только сезонная тема); без авторизации,
+	// как и /widget/status — запрашивается при загрузке, до создания сессии
+	.get('/widget/config', async () => {
+		return { theme: await getWidgetTheme() }
 	})
 	.post('/widget/session', async ({ set, request, server }) => {
 		if (!allowSessionCreate(getClientIp({ request, server }))) {

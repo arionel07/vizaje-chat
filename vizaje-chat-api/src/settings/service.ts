@@ -142,6 +142,40 @@ export function getStatus(schedule: Schedule, now = new Date()) {
 	return { online: false as const, nextOnlineAt: null } // все дни выключены
 }
 
+// сезонная тема виджета: список для будущих сезонов держим в одном месте,
+// чтобы добавить Spring/Summer/Autumn — просто дописать строку сюда
+export const WIDGET_THEMES = ['classic', 'winter'] as const
+export type WidgetTheme = (typeof WIDGET_THEMES)[number]
+export const DEFAULT_WIDGET_THEME: WidgetTheme = 'classic'
+
+const WIDGET_THEME_KEY = 'widgetTheme'
+
+export async function getWidgetTheme(): Promise<WidgetTheme> {
+	const [row] = await db
+		.select({ value: settings.value })
+		.from(settings)
+		.where(eq(settings.key, WIDGET_THEME_KEY))
+	const value = row?.value
+	return typeof value === 'string' && (WIDGET_THEMES as readonly string[]).includes(value)
+		? (value as WidgetTheme)
+		: DEFAULT_WIDGET_THEME
+}
+
+export async function setWidgetTheme(input: unknown): Promise<WidgetTheme> {
+	if (typeof input !== 'string' || !(WIDGET_THEMES as readonly string[]).includes(input)) {
+		throw new Error(`theme должен быть одним из: ${WIDGET_THEMES.join(', ')}`)
+	}
+	const theme = input as WidgetTheme
+	await db
+		.insert(settings)
+		.values({ key: WIDGET_THEME_KEY, value: theme, updatedAt: new Date() })
+		.onConflictDoUpdate({
+			target: settings.key,
+			set: { value: theme, updatedAt: new Date() }
+		})
+	return theme
+}
+
 // человекочитаемая сводка для баннера в виджете, например "Пн–Пт 09:00–18:00, Сб 10:00–14:00":
 // склеивает подряд идущие дни с одинаковым интервалом в один диапазон
 export function summarizeSchedule(schedule: Schedule) {

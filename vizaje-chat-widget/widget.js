@@ -32,6 +32,11 @@
  *   data-offset-bottom — отступ снизу в px (по умолчанию 20)
  *   data-offset-right / data-offset-left — отступ от края в px (по умолчанию 20);
  *                        действует тот, что соответствует data-position
+ *
+ * Сезонная тема (Classic / Winter) — не атрибут, а настройка в админке
+ * (GET/PUT /admin/settings/theme); виджет сам забирает её через GET /widget/config
+ * при загрузке страницы. Winter — поверх панели падают снежинки (CSS-анимация,
+ * pointer-events: none), Classic — без эффектов.
  */
 ;(function () {
 	if (window.__vizajeChatLoaded) return
@@ -73,6 +78,8 @@
 	const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition
 
 	const PAGE_SIZE = 50
+	const SNOW_CHARS = ['❄', '❅', '❆']
+	const SNOW_COUNT = 8 // 6-10 снежинок, как в задаче
 	const ACK_TIMEOUT_MS = 10000 // подтверждение sent не пришло — перестаём отслеживать
 	const TYPING_EMIT_MS = 3000 // не чаще, чем раз в 3 с сообщаем «печатаю»
 	const TYPING_SHOW_MS = 5000 // «печатает» гаснет, если событий больше нет
@@ -138,16 +145,17 @@
     --brand: #18181b; --brand-fg: #ffffff; --ring: #18181b; --danger: #dc2626;
     /* лаунчер и тайл-«логотип» всегда чёрные, независимо от темы — так на референсе */
     --launcher-bg: #000000; --launcher-fg: #ffffff; --shadow: 0 12px 48px rgba(0,0,0,.22);
+    --snow-color: #0ea5e9;
     color-scheme: light; }
   :host([data-theme="dark"]) {
     --bg: #17181c; --fg: #f4f4f5; --muted: #a1a1aa; --surface: #2a2b31; --border: #2e2f36;
     --brand: #f4f4f5; --brand-fg: #17181c; --ring: #f4f4f5; --danger: #f87171;
-    --shadow: 0 12px 48px rgba(0,0,0,.6); color-scheme: dark; }
+    --shadow: 0 12px 48px rgba(0,0,0,.6); --snow-color: #bae6fd; color-scheme: dark; }
   @media (prefers-color-scheme: dark) {
     :host([data-theme="auto"]) {
       --bg: #17181c; --fg: #f4f4f5; --muted: #a1a1aa; --surface: #2a2b31; --border: #2e2f36;
       --brand: #f4f4f5; --brand-fg: #17181c; --ring: #f4f4f5; --danger: #f87171;
-      --shadow: 0 12px 48px rgba(0,0,0,.6); color-scheme: dark; } }
+      --shadow: 0 12px 48px rgba(0,0,0,.6); --snow-color: #bae6fd; color-scheme: dark; } }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   button, textarea { font: inherit; color: inherit; }
@@ -291,8 +299,22 @@
   .privacy { margin: 0; padding: 0 16px calc(10px + env(safe-area-inset-bottom)); font-size: 11px; line-height: 1.4; text-align: center; color: var(--muted); }
   .privacy a { color: inherit; text-decoration: underline; }
 
+  /* сезонная тема «Winter»: падающие снежинки поверх панели, кликов не перехватывают */
+  .snow { position: absolute; inset: 0; z-index: 5; overflow: hidden; pointer-events: none; }
+  .flake { position: absolute; top: -10%; color: var(--snow-color); opacity: .55; line-height: 1;
+    text-shadow: 0 0 3px rgba(0,0,0,.15); animation-name: snow-fall; animation-timing-function: linear; animation-iteration-count: infinite; }
+  /* top (не transform) — его % считаются от высоты панели, а не от крошечного
+     бокса самой снежинки; transform остаётся только для покачивания и вращения */
+  @keyframes snow-fall {
+    0%   { top: -10%; transform: translateX(0) rotate(0deg); }
+    25%  { top: 15%; transform: translateX(8px) rotate(90deg); }
+    50%  { top: 50%; transform: translateX(-8px) rotate(180deg); }
+    75%  { top: 85%; transform: translateX(8px) rotate(270deg); }
+    100% { top: 110%; transform: translateX(0) rotate(360deg); }
+  }
+
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
-  @media (prefers-reduced-motion: reduce) { .toast, .proactive, .root.open .panel, .typing .dot, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .toast, .proactive, .root.open .panel, .typing .dot, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } .flake { animation: none; display: none; } }
 
   @media (hover: none) and (pointer: coarse) {
     .reply-btn { display: none; }
@@ -324,6 +346,7 @@
 			: ''
 	}
   <section class="panel" role="dialog" aria-label="${TITLE.replace(/"/g, '&quot;')}">
+    <div class="snow" aria-hidden="true" hidden></div>
     <header class="head">
       <span class="avatar">${ICON_GRID}</span>
       <div class="head-text"><div class="title"></div><div class="sub">${SUBTITLE}</div></div>
@@ -389,6 +412,7 @@
 	const downloadItem = $('.menu-item.download')
 	const banner = $('.banner')
 	const offlineBanner = $('.offline-banner')
+	const snow = $('.snow')
 	const messagesEl = $('.messages')
 	const form = $('.composer')
 	const replyBar = $('.reply-bar')
@@ -815,6 +839,42 @@
 					: 'Сейчас мы не в сети.'
 		} catch {
 			// сбой — молчим, лучше ничего не показать, чем соврать про офлайн
+		}
+	}
+
+	// случайное число в [min, max)
+	const randomBetween = (min, max) => min + Math.random() * (max - min)
+
+	// падающие снежинки поверх панели (тема Winter); рисуются один раз и просто
+	// крутятся в CSS-анимации, пока панель открыта — скрыты вместе с panel при закрытии
+	function renderSnow() {
+		if (!snow || snow.childElementCount) return
+		for (let i = 0; i < SNOW_COUNT; i++) {
+			const flake = document.createElement('span')
+			flake.className = 'flake'
+			flake.textContent = SNOW_CHARS[i % SNOW_CHARS.length]
+			flake.style.left = `${randomBetween(0, 95)}%`
+			flake.style.fontSize = `${randomBetween(10, 20)}px`
+			flake.style.animationDuration = `${randomBetween(7, 15)}s`
+			// отрицательная задержка — снежинки стартуют в разных фазах, а не все разом сверху
+			flake.style.animationDelay = `-${randomBetween(0, 15)}s`
+			snow.appendChild(flake)
+		}
+	}
+
+	// тема виджета (пока только Winter — снежинки); публичный эндпоинт, без токена.
+	// Запрашивается один раз при загрузке страницы
+	async function checkConfig() {
+		try {
+			const res = await fetch(`${API_URL}/widget/config`)
+			if (!res.ok) return
+			const { theme } = await res.json()
+			if (theme === 'winter' && snow) {
+				renderSnow()
+				snow.hidden = false
+			}
+		} catch {
+			// сбой — тему просто не включаем, обычный вид не хуже
 		}
 	}
 
@@ -1265,6 +1325,7 @@
 
 	function mount() {
 		document.body.appendChild(host)
+		checkConfig() // не блокирует остальной старт
 		// вернувшийся посетитель: подключаемся в фоне, чтобы работали бейдж и превью.
 		// Новым посетителям сессию не создаём, пока они не откроют чат.
 		if (token) start()

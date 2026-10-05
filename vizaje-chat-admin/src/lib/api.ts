@@ -239,6 +239,34 @@ export async function updateSchedule(token: string, days: Schedule['days']) {
 	return res.json() as Promise<Schedule>
 }
 
+// список опций виджета: добавить сезон — дописать строку сюда, компонент настроек
+// и сам виджет ничего не знают о конкретных значениях и не требуют переделки
+export const WIDGET_THEMES = ['classic', 'winter'] as const
+export type WidgetTheme = (typeof WIDGET_THEMES)[number]
+
+export async function fetchWidgetTheme(token: string) {
+	const res = await fetch(`${API_URL}/admin/settings/theme`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return ((await res.json()) as { theme: WidgetTheme }).theme
+}
+
+export async function updateWidgetTheme(token: string, theme: WidgetTheme) {
+	const res = await fetch(`${API_URL}/admin/settings/theme`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify({ theme })
+	})
+	handleUnauthorized(res)
+	if (!res.ok) {
+		const body = await res.json().catch(() => null)
+		throw new Error(body?.error || `Request failed: ${res.status}`)
+	}
+	return ((await res.json()) as { theme: WidgetTheme }).theme
+}
+
 export type CannedResponse = {
 	id: number
 	title: string

@@ -1,6 +1,11 @@
 import { Elysia, t } from 'elysia'
 import { verifyToken } from '../auth/guard'
-import { getSchedule, setSchedule } from '../settings/service'
+import {
+	getSchedule,
+	getWidgetTheme,
+	setSchedule,
+	setWidgetTheme
+} from '../settings/service'
 
 const daySchema = t.Object({
 	enabled: t.Boolean(),
@@ -45,4 +50,29 @@ export const settingsRoutes = new Elysia()
 			}
 		},
 		{ body: scheduleBody }
+	)
+	.get('/admin/settings/theme', async ({ headers, set }) => {
+		const admin = verifyToken(headers.authorization)
+		if (!admin) {
+			set.status = 401
+			return { error: 'Unauthorized' }
+		}
+		return { theme: await getWidgetTheme() }
+	})
+	.put(
+		'/admin/settings/theme',
+		async ({ headers, body, set }) => {
+			const admin = verifyToken(headers.authorization)
+			if (!admin) {
+				set.status = 401
+				return { error: 'Unauthorized' }
+			}
+			try {
+				return { theme: await setWidgetTheme(body.theme) }
+			} catch (e) {
+				set.status = 422
+				return { error: e instanceof Error ? e.message : 'Invalid theme' }
+			}
+		},
+		{ body: t.Object({ theme: t.String() }) }
 	)
