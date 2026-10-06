@@ -36,7 +36,9 @@
  * Сезонная тема (Classic / Winter) — не атрибут, а настройка в админке
  * (GET/PUT /admin/settings/theme); виджет сам забирает её через GET /widget/config
  * при загрузке страницы. Winter — поверх панели падают снежинки (CSS-анимация,
- * pointer-events: none), Classic — без эффектов.
+ * pointer-events: none), плюс статичные декорации: шапка снега на поле ввода,
+ * сосульки и шапка Санты на тайле-«логотипе» в шапке панели, гирлянда над шапкой.
+ * Classic — без эффектов.
  */
 ;(function () {
 	if (window.__vizajeChatLoaded) return
@@ -286,7 +288,7 @@
   .load-more:disabled { opacity: .6; cursor: default; }
 
   .composer { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); }
-  .composer-box { border: 1px solid var(--border); border-radius: 20px; padding: 10px 10px 8px 14px; transition: border-color .15s; }
+  .composer-box { position: relative; border: 1px solid var(--border); border-radius: 20px; padding: 10px 10px 8px 14px; transition: border-color .15s; }
   .composer-box:focus-within { border-color: var(--ring); }
   .input { display: block; width: 100%; resize: none; max-height: ${MAX_INPUT_HEIGHT}px; min-height: 24px; padding: 0;
     border: 0; background: transparent; color: var(--fg); font-size: 16px; line-height: 1.35; outline: none; }
@@ -312,6 +314,29 @@
     75%  { top: 85%; transform: translateX(8px) rotate(270deg); }
     100% { top: 110%; transform: translateX(0) rotate(360deg); }
   }
+
+  /* Winter: статичные декорации — снег на поле ввода, сосульки и шапка
+     Санты на тайле-«логотипе», гирлянда над шапкой панели */
+  .root.winter .composer-box::before {
+    content: ''; position: absolute; left: 6px; right: 6px; top: -7px; height: 12px;
+    background:
+      radial-gradient(circle at 8px 10px, #fff 5px, transparent 6px),
+      radial-gradient(circle at 20px 6px, #fff 6px, transparent 7px),
+      radial-gradient(circle at 32px 9px, #fff 5px, transparent 6px);
+    background-repeat: repeat-x; background-size: 28px 12px;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,.15)); pointer-events: none; }
+  .head .avatar { position: relative; }
+  .icicles { position: absolute; left: 3px; right: 3px; bottom: -8px; line-height: 0; pointer-events: none; }
+  .icicles svg { width: 100%; height: 8px; display: block; }
+  .santa-hat { position: absolute; top: -8px; left: -3px; width: 18px; height: 14px; pointer-events: none;
+    filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.35)); }
+  .santa-hat .cap { position: absolute; inset: 0 0 5px 0; background: #dc2626; clip-path: polygon(0% 100%, 100% 100%, 85% 15%, 15% 35%); border-radius: 2px; }
+  .santa-hat .band { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: #fff; border-radius: 3px; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
+  .santa-hat .pompom { position: absolute; top: -2px; right: 0; width: 6px; height: 6px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
+  .root.winter .head { position: relative; }
+  .garland { position: absolute; left: 0; right: 0; top: -1px; height: 8px; display: flex;
+    justify-content: space-evenly; align-items: center; pointer-events: none; z-index: 1; }
+  .garland .bulb { width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 4px currentColor; }
 
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { .toast, .proactive, .root.open .panel, .typing .dot, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } .flake { animation: none; display: none; } }
@@ -862,8 +887,69 @@
 		}
 	}
 
-	// тема виджета (пока только Winter — снежинки); публичный эндпоинт, без токена.
-	// Запрашивается один раз при загрузке страницы
+	// сосульки под тайлом-«логотипом» в шапке: ряд треугольных «спайков»,
+	// высота каждого чуть гуляет — рисуются один раз как маленький inline SVG
+	function buildIcicles() {
+		const wrap = document.createElement('span')
+		wrap.className = 'icicles'
+		wrap.setAttribute('aria-hidden', 'true')
+		const w = 36, h = 9, count = 5
+		let paths = ''
+		for (let i = 0; i < count; i++) {
+			const seg = w / count
+			const cx = seg * (i + 0.5)
+			const spikeH = h * randomBetween(0.55, 0.95)
+			const half = seg * 0.32
+			paths += `<path d="M${(cx - half).toFixed(1)} 0 L${(cx + half).toFixed(1)} 0 L${cx.toFixed(1)} ${spikeH.toFixed(1)} Z" fill="#cdeeff"/>`
+		}
+		wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none">${paths}</svg>`
+		return wrap
+	}
+
+	// шапка Санты на уголке того же тайла — три слоя (колпак/кант/помпон), чистый CSS
+	function buildSantaHat() {
+		const el = document.createElement('span')
+		el.className = 'santa-hat'
+		el.setAttribute('aria-hidden', 'true')
+		el.innerHTML = '<span class="cap"></span><span class="band"></span><span class="pompom"></span>'
+		return el
+	}
+
+	// гирлянда лампочек над шапкой панели
+	const GARLAND_COLORS = ['#dc2626', '#16a34a', '#facc15', '#2563eb']
+	function buildGarland(count = 9) {
+		const el = document.createElement('div')
+		el.className = 'garland'
+		el.setAttribute('aria-hidden', 'true')
+		for (let i = 0; i < count; i++) {
+			const bulb = document.createElement('span')
+			bulb.className = 'bulb'
+			const color = GARLAND_COLORS[i % GARLAND_COLORS.length]
+			bulb.style.background = color
+			bulb.style.color = color
+			el.appendChild(bulb)
+		}
+		return el
+	}
+
+	// статичные зимние декорации (сосульки, шапка Санты, гирлянда); снег на поле
+	// ввода — чистый CSS по классу .winter, без лишних элементов. Рисуются один раз
+	let winterDecorRendered = false
+	function renderWinterDecor() {
+		if (winterDecorRendered) return
+		winterDecorRendered = true
+		rootEl.classList.add('winter')
+		const avatar = $('.head .avatar')
+		if (avatar) {
+			avatar.appendChild(buildSantaHat())
+			avatar.appendChild(buildIcicles())
+		}
+		const head = $('.head')
+		if (head) head.prepend(buildGarland())
+	}
+
+	// тема виджета (Winter — снежинки и статичные зимние декорации); публичный
+	// эндпоинт, без токена. Запрашивается один раз при загрузке страницы
 	async function checkConfig() {
 		try {
 			const res = await fetch(`${API_URL}/widget/config`)
@@ -872,6 +958,7 @@
 			if (theme === 'winter' && snow) {
 				renderSnow()
 				snow.hidden = false
+				renderWinterDecor()
 			}
 		} catch {
 			// сбой — тему просто не включаем, обычный вид не хуже
