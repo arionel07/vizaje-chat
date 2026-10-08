@@ -239,16 +239,17 @@
   .meta { margin: 3px 4px 0; font-size: 11px; color: var(--muted); }
   .row.failed .meta { color: var(--danger); }
   .row.system { align-self: center; max-width: 100%; margin: 8px 0; font-size: 12px; color: var(--muted); text-align: center; }
-  /* typing-индикатор: слайм-аватар Vizi (чистый CSS, без SVG) + пузырь
-     с тремя пульсирующими точками. Свечение фиксированное, не зависит от
-     темы виджета, иначе на светлом фоне потеряется */
-  .row.agent.typing .bubble { background: transparent; padding: 0; }
-  .typing { --vizi-bubble-border: rgba(158, 190, 255, 0.72); }
-  .typing .vizi-typing { display: inline-flex; align-items: center; gap: 10px; padding: 4px 0 8px; isolation: isolate; }
+  /* typing-индикатор: слайм-аватар Vizi (чистый CSS, без SVG) + белый пузырь
+     с тремя подпрыгивающими точками */
+  /* .bubble наследует white-space:pre-wrap (нужен для текста сообщений) — здесь
+     текста нет, зато есть отступы/переносы строк разметки, которые иначе рендерятся
+     как видимые пробелы и раздувают пузырь вправо */
+  .row.agent.typing .bubble { background: transparent; padding: 0; white-space: normal; }
+  .typing .vizi-typing { display: inline-flex; align-items: center; gap: 3px; padding: 2px 0; isolation: isolate; }
 
-  /* слайм уменьшен с исходных 150×140 до размера аватара в ленте (~44×42) —
+  /* слайм уменьшен с исходных 150×140 до размера аватара в ленте (~36×34) —
      проценты у глаз и border-radius у формы остаются теми же, они не зависят от масштаба */
-  .vizi-slime { position: relative; flex: 0 0 auto; width: 44px; height: 42px;
+  .vizi-slime { position: relative; flex: 0 0 auto; width: 36px; height: 34px;
     background: #0d0d0d; border-radius: 50% 50% 48% 52% / 60% 58% 42% 44%;
     box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .9), 0 0 10px rgba(255, 255, 255, .3),
       inset -2px -3px 6px rgba(255, 255, 255, .08);
@@ -270,44 +271,19 @@
   @keyframes vizi-slime-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.06); } }
   @keyframes vizi-slime-shadow-breathe { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(1.08); } }
 
-  .vizi-typing-bubble { position: relative; min-width: 96px; height: 38px; padding: 0 28px;
-    border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 12px;
-    background: radial-gradient(circle at 28% 35%, rgba(176, 205, 255, .16), transparent 24%),
-      linear-gradient(180deg, rgba(30, 38, 55, .9), rgba(6, 9, 15, .86));
-    border: 1.4px solid var(--vizi-bubble-border);
-    box-shadow: 0 0 3px rgba(218, 232, 255, .85), 0 0 11px rgba(95, 145, 255, .52),
-      0 0 26px rgba(70, 118, 255, .28), inset 0 1px 1px rgba(255, 255, 255, .18),
-      inset 0 -14px 24px rgba(0, 0, 0, .28);
-    animation: vizi-bubble-breathe 2.2s ease-in-out infinite; }
-  /* мягкий «носик» пузыря, как на референсе */
-  .vizi-typing-bubble::before { content: ''; position: absolute; left: -13px; top: 50%; width: 23px; height: 20px;
-    transform: translateY(-50%);
-    background: radial-gradient(circle at 100% 50%, rgba(15, 21, 34, .95) 0 62%, transparent 64%);
-    filter: drop-shadow(-1px 0 1px rgba(220, 235, 255, .75)) drop-shadow(-3px 0 8px rgba(100, 150, 255, .45));
-    clip-path: polygon(0 50%, 100% 6%, 100% 94%); }
-  /* внутренний свет по верхнему краю */
-  .vizi-typing-bubble::after { content: ''; position: absolute; inset: 1px 1px auto 1px; height: 46%;
-    border-radius: 999px 999px 40px 40px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, 0));
-    pointer-events: none; }
-
-  .vizi-dot { width: 12px; height: 12px; border-radius: 999px;
-    background: radial-gradient(circle at 36% 30%, #fff 0 12%, #dce9ff 28%, #79a7ff 68%, #38507f 100%);
-    box-shadow: 0 0 4px rgba(220, 235, 255, .9), 0 0 12px rgba(118, 165, 255, .65);
-    opacity: .42; transform: scale(.78); animation: vizi-dot-pulse 1.35s ease-in-out infinite; }
-  .vizi-dot:nth-child(2) { animation-delay: .18s; }
-  .vizi-dot:nth-child(3) { animation-delay: .36s; }
-
-  @keyframes vizi-dot-pulse {
-    0%, 68%, 100% { opacity: .34; transform: scale(.72); filter: blur(.1px); }
-    32% { opacity: 1; transform: scale(1); filter: blur(0); }
-  }
-  @keyframes vizi-bubble-breathe {
-    0%, 100% { box-shadow: 0 0 3px rgba(218, 232, 255, .72), 0 0 10px rgba(95, 145, 255, .45),
-      0 0 24px rgba(70, 118, 255, .22), inset 0 1px 1px rgba(255, 255, 255, .16), inset 0 -14px 24px rgba(0, 0, 0, .28); }
-    50% { box-shadow: 0 0 4px rgba(234, 242, 255, .95), 0 0 15px rgba(116, 166, 255, .62),
-      0 0 34px rgba(70, 118, 255, .34), inset 0 1px 1px rgba(255, 255, 255, .2), inset 0 -14px 24px rgba(0, 0, 0, .28); }
-  }
+  /* плоский белый пузырь с треугольным «хвостиком» — вдвое компактнее референса
+     (12px/18px паддинг, 8px точки → 6px/9px и 5px). Непрозрачный белый фон + тень
+     нужны, чтобы не потеряться на белой панели в светлой теме */
+  .vizi-typing-bubble { position: relative; display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 9px; border-radius: 12px; background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 2px 8px rgba(0, 0, 0, .16); }
+  .vizi-typing-bubble::before { content: ''; position: absolute; left: -5px; top: 32%; transform: translateY(-50%);
+    border: 5px solid transparent; border-right-color: #fff; border-left: 0; }
+  .vizi-dot { width: 5px; height: 5px; border-radius: 50%; background: #0d0d0d;
+    animation: vizi-dot-bounce 1.2s ease-in-out infinite; }
+  .vizi-dot:nth-child(2) { animation-delay: .15s; }
+  .vizi-dot:nth-child(3) { animation-delay: .3s; }
+  @keyframes vizi-dot-bounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-3px); } }
   .line { display: flex; align-items: center; gap: 4px; max-width: 100%; }
   .bubble { min-width: 0; }
   .reply-btn { flex: none; width: 28px; height: 28px; border-radius: 50%; color: var(--muted);
