@@ -87,3 +87,21 @@ export const botResponses = pgTable('bot_responses', {
 	answerRo: text('answer_ro').notNull(),
 	createdAt: timestamp('created_at').defaultNow().notNull()
 })
+
+export const pushPlatform = pgEnum('push_platform', ['ios', 'android'])
+
+// Expo push-токены мобильных устройств операторов; token — глобально уникален:
+// один и тот же токен переезжает на нового админа, если устройство сменило владельца
+export const pushTokens = pgTable(
+	'push_tokens',
+	{
+		id: serial('id').primaryKey(),
+		adminId: integer('admin_id')
+			.notNull()
+			.references(() => adminUsers.id, { onDelete: 'cascade' }),
+		token: text('token').notNull().unique(),
+		platform: pushPlatform('platform').notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull()
+	},
+	t => [index('push_tokens_admin_id_idx').on(t.adminId)]
+)

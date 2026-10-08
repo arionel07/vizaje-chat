@@ -6,6 +6,7 @@ import { authRoutes } from './routes/auth.routes'
 import { botResponsesRoutes } from './routes/bot-responses.routes'
 import { cannedResponsesRoutes } from './routes/canned-responses.routes'
 import { conversationsRoutes } from './routes/conversations.routes'
+import { pushTokensRoutes } from './routes/push-tokens.routes'
 import { settingsRoutes } from './routes/settings.routes'
 import { widgetRoutes } from './routes/widget.routes'
 import { wsRoutes } from './routes/ws.routes'
@@ -26,6 +27,7 @@ export function createApp() {
 		.use(authRoutes)
 		.use(widgetRoutes)
 		.use(conversationsRoutes)
+		.use(pushTokensRoutes)
 		.use(settingsRoutes)
 		.use(cannedResponsesRoutes)
 		.use(botResponsesRoutes)

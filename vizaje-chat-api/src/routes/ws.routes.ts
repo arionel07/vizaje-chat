@@ -9,6 +9,8 @@ import {
 	replyTargetExists
 } from '../chat/service'
 import { verifySessionToken } from '../widget/service'
+import { sendExpoPush } from '../push-tokens/expo-push'
+import { getAllPushTokens } from '../push-tokens/service'
 
 type ConnStore =
 	| { type: 'visitor'; conversationId: number }
@@ -174,6 +176,17 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			ws.publish(`conversation:${store.conversationId}`, payload)
 			ws.publish('admin:global', payload)
 			sendAck(ws, msg, clientId)
+
+			// push — best-effort, не блокирует обработку сообщения
+			getAllPushTokens()
+				.then(tokens =>
+					sendExpoPush(tokens, {
+						title: `Беседа #${store.conversationId}`,
+						body: text,
+						data: { conversationId: store.conversationId }
+					})
+				)
+				.catch(error => console.error('Failed to notify admins:', error))
 
 			// точное совпадение с триггером (например, клик по quick-reply кнопке) —
 			// бот отвечает сам, без участия оператора; не совпало — ждёт оператора как раньше
