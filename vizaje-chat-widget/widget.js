@@ -239,19 +239,36 @@
   .meta { margin: 3px 4px 0; font-size: 11px; color: var(--muted); }
   .row.failed .meta { color: var(--danger); }
   .row.system { align-self: center; max-width: 100%; margin: 8px 0; font-size: 12px; color: var(--muted); text-align: center; }
-  /* typing-индикатор: светящийся аватар Vizi (SVG-градиенты/фильтры) + пузырь
+  /* typing-индикатор: слайм-аватар Vizi (чистый CSS, без SVG) + пузырь
      с тремя пульсирующими точками. Свечение фиксированное, не зависит от
      темы виджета, иначе на светлом фоне потеряется */
   .row.agent.typing .bubble { background: transparent; padding: 0; }
   .typing { --vizi-bubble-border: rgba(158, 190, 255, 0.72); }
-  .typing .vizi-typing { display: inline-flex; align-items: center; gap: 10px; padding: 4px 0; isolation: isolate; }
+  .typing .vizi-typing { display: inline-flex; align-items: center; gap: 10px; padding: 4px 0 8px; isolation: isolate; }
 
-  .vizi-typing-avatar { width: 46px; height: 46px; flex: 0 0 auto; overflow: visible;
-    transform-origin: 50% 70%; animation: vizi-idle 2.8s ease-in-out infinite; }
-  .vizi-body, .vizi-ear { fill: url(#viziBodyGradient); }
-  .vizi-rim { fill: none; stroke: url(#viziRimGradient); stroke-width: 1.8;
-    stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
-  .vizi-eye { fill: url(#viziEyeGradient); animation: vizi-eye-glow 1.8s ease-in-out infinite; }
+  /* слайм уменьшен с исходных 150×140 до размера аватара в ленте (~44×42) —
+     проценты у глаз и border-radius у формы остаются теми же, они не зависят от масштаба */
+  .vizi-slime { position: relative; flex: 0 0 auto; width: 44px; height: 42px;
+    background: #0d0d0d; border-radius: 50% 50% 48% 52% / 60% 58% 42% 44%;
+    box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .9), 0 0 10px rgba(255, 255, 255, .3),
+      inset -2px -3px 6px rgba(255, 255, 255, .08);
+    animation: vizi-slime-morph 6s ease-in-out infinite, vizi-slime-breathe 3.2s ease-in-out infinite;
+    transform-origin: bottom center; }
+  .vizi-slime-eye { position: absolute; top: 32%; width: 17%; height: 30%;
+    background: #fff; border-radius: 50%; animation: vizi-slime-blink 4.6s infinite; }
+  .vizi-slime-eye.left { left: 26%; }
+  .vizi-slime-eye.right { right: 26%; }
+  .vizi-slime-shadow { position: absolute; left: 16%; right: 16%; bottom: -6px; height: 5px;
+    background: rgba(0, 0, 0, .35); border-radius: 50%; filter: blur(2px);
+    animation: vizi-slime-shadow-breathe 3.2s ease-in-out infinite; }
+  @keyframes vizi-slime-morph {
+    0%, 100% { border-radius: 50% 50% 48% 52% / 60% 58% 42% 44%; }
+    33% { border-radius: 46% 54% 52% 48% / 54% 62% 38% 46%; }
+    66% { border-radius: 54% 46% 46% 54% / 58% 52% 48% 42%; }
+  }
+  @keyframes vizi-slime-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.05, .95); } }
+  @keyframes vizi-slime-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.06); } }
+  @keyframes vizi-slime-shadow-breathe { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(1.08); } }
 
   .vizi-typing-bubble { position: relative; min-width: 96px; height: 38px; padding: 0 28px;
     border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 12px;
@@ -291,8 +308,6 @@
     50% { box-shadow: 0 0 4px rgba(234, 242, 255, .95), 0 0 15px rgba(116, 166, 255, .62),
       0 0 34px rgba(70, 118, 255, .34), inset 0 1px 1px rgba(255, 255, 255, .2), inset 0 -14px 24px rgba(0, 0, 0, .28); }
   }
-  @keyframes vizi-idle { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-1px) scale(1.015); } }
-  @keyframes vizi-eye-glow { 0%, 100% { opacity: .92; } 50% { opacity: 1; } }
   .line { display: flex; align-items: center; gap: 4px; max-width: 100%; }
   .bubble { min-width: 0; }
   .reply-btn { flex: none; width: 28px; height: 28px; border-radius: 50%; color: var(--muted);
@@ -392,7 +407,7 @@
   .garland .bulb { width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 4px currentColor; }
 
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
-  @media (prefers-reduced-motion: reduce) { .toast, .proactive, .root.open .panel, .vizi-typing-avatar, .vizi-typing-bubble, .vizi-dot, .vizi-eye, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } .flake { animation: none; display: none; } }
+  @media (prefers-reduced-motion: reduce) { .toast, .proactive, .root.open .panel, .vizi-slime, .vizi-slime-eye, .vizi-slime-shadow, .vizi-typing-bubble, .vizi-dot, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } .flake { animation: none; display: none; } }
 
   @media (hover: none) and (pointer: coarse) {
     .reply-btn { display: none; }
@@ -579,71 +594,11 @@
 	typingEl.setAttribute('aria-hidden', 'true')
 	typingEl.innerHTML = `<div class="bubble">
 		<div class="vizi-typing">
-			<svg class="vizi-typing-avatar" viewBox="0 0 64 64" aria-hidden="true">
-				<defs>
-					<radialGradient id="viziBodyGradient" cx="38%" cy="30%" r="72%">
-						<stop offset="0%" stop-color="#252b36"/>
-						<stop offset="45%" stop-color="#080a0f"/>
-						<stop offset="100%" stop-color="#020308"/>
-					</radialGradient>
-					<linearGradient id="viziRimGradient" x1="12" y1="8" x2="54" y2="58">
-						<stop offset="0%" stop-color="#f2f7ff" stop-opacity="0.95"/>
-						<stop offset="34%" stop-color="#9fc3ff" stop-opacity="0.72"/>
-						<stop offset="70%" stop-color="#5b7fd8" stop-opacity="0.28"/>
-						<stop offset="100%" stop-color="#ffffff" stop-opacity="0.08"/>
-					</linearGradient>
-					<radialGradient id="viziEyeGradient" cx="40%" cy="28%" r="70%">
-						<stop offset="0%" stop-color="#ffffff"/>
-						<stop offset="55%" stop-color="#dbe9ff"/>
-						<stop offset="100%" stop-color="#8db8ff"/>
-					</radialGradient>
-					<filter id="viziGlow" x="-80%" y="-80%" width="260%" height="260%">
-						<feGaussianBlur stdDeviation="3.5" result="blur1"/>
-						<feColorMatrix in="blur1" type="matrix" values="
-							0 0 0 0 0.38
-							0 0 0 0 0.62
-							0 0 0 0 1
-							0 0 0 0.85 0" result="blueGlow"/>
-						<feGaussianBlur stdDeviation="7" result="blur2"/>
-						<feColorMatrix in="blur2" type="matrix" values="
-							0 0 0 0 0.22
-							0 0 0 0 0.48
-							0 0 0 0 1
-							0 0 0 0.35 0" result="softGlow"/>
-						<feMerge>
-							<feMergeNode in="softGlow"/>
-							<feMergeNode in="blueGlow"/>
-							<feMergeNode in="SourceGraphic"/>
-						</feMerge>
-					</filter>
-					<filter id="viziEyeGlow" x="-120%" y="-120%" width="340%" height="340%">
-						<feGaussianBlur stdDeviation="2.2" result="eyeBlur"/>
-						<feColorMatrix in="eyeBlur" type="matrix" values="
-							0 0 0 0 0.55
-							0 0 0 0 0.75
-							0 0 0 0 1
-							0 0 0 0.8 0" result="eyeGlow"/>
-						<feMerge>
-							<feMergeNode in="eyeGlow"/>
-							<feMergeNode in="SourceGraphic"/>
-						</feMerge>
-					</filter>
-				</defs>
-				<g class="vizi-avatar-glow" filter="url(#viziGlow)">
-					<path class="vizi-ear vizi-ear-left"
-						d="M15.5 23.5C15.2 14.6 20.4 7.5 26.8 12.3C29.9 14.6 30.5 19.5 29.2 23.8C25.6 22.5 20.3 22.3 15.5 23.5Z" />
-					<path class="vizi-ear vizi-ear-right"
-						d="M48.5 23.5C48.8 14.6 43.6 7.5 37.2 12.3C34.1 14.6 33.5 19.5 34.8 23.8C38.4 22.5 43.7 22.3 48.5 23.5Z" />
-					<circle class="vizi-body" cx="32" cy="34" r="22.5"/>
-					<path class="vizi-rim" d="M15.5 23.5C15.2 14.6 20.4 7.5 26.8 12.3C29.9 14.6 30.5 19.5 29.2 23.8" />
-					<path class="vizi-rim" d="M48.5 23.5C48.8 14.6 43.6 7.5 37.2 12.3C34.1 14.6 33.5 19.5 34.8 23.8" />
-					<path class="vizi-rim" d="M13.8 36.5C14.6 49.5 24.8 56.7 36.9 54.4C48.5 52.2 55.2 41 52.5 29.7" />
-				</g>
-				<g filter="url(#viziEyeGlow)">
-					<rect class="vizi-eye" x="23" y="29" width="6.4" height="12.8" rx="3.2"/>
-					<rect class="vizi-eye" x="34.6" y="29" width="6.4" height="12.8" rx="3.2"/>
-				</g>
-			</svg>
+			<div class="vizi-slime">
+				<div class="vizi-slime-eye left"></div>
+				<div class="vizi-slime-eye right"></div>
+				<div class="vizi-slime-shadow"></div>
+			</div>
 			<div class="vizi-typing-bubble" aria-label="Vizi печатает">
 				<span class="vizi-dot"></span>
 				<span class="vizi-dot"></span>
