@@ -22,6 +22,10 @@ Bun.serve({
 	fetch(req) {
 		const pathname = new URL(req.url).pathname
 		if (pathname === '/favicon.ico') return new Response(null, { status: 204 })
+		if (pathname.startsWith('/public/') && !pathname.includes('..')) {
+			const file = Bun.file(fileURLToPath(new URL(`.${pathname}`, import.meta.url)))
+			return file.exists().then(ok => (ok ? new Response(file) : new Response('Not found', { status: 404 })))
+		}
 		const name = files[pathname]
 		if (!name) return new Response('Not found', { status: 404 })
 		return new Response(Bun.file(fileURLToPath(new URL(name, import.meta.url))))

@@ -49,6 +49,9 @@
 	const cfg = script?.dataset || {}
 	const API_URL = (cfg.api || 'http://localhost:3001').replace(/\/$/, '')
 	const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws'
+	// база для статики (public/...) — папка, где лежит сам widget.js, не API
+	const ASSET_BASE = (script?.src || '').replace(/[^/]*$/, '')
+	const AVATAR_URL = `${ASSET_BASE}public/vizi-profili.png`
 	const TITLE = cfg.title || 'Поддержка Vizaje-Nica'
 	const AGENT = cfg.agent || 'Поддержка'
 	const THEME = ['light', 'dark'].includes(cfg.theme) ? cfg.theme : 'auto'
@@ -85,6 +88,9 @@
 	const ACK_TIMEOUT_MS = 10000 // подтверждение sent не пришло — перестаём отслеживать
 	const TYPING_EMIT_MS = 3000 // не чаще, чем раз в 3 с сообщаем «печатаю»
 	const TYPING_SHOW_MS = 5000 // «печатает» гаснет, если событий больше нет
+	// автоответ бота приходит мгновенно (без события typing от сервера) — даём
+	// индикатору время показаться перед тем, как подставить реальное сообщение
+	const BOT_TYPING_DELAY_MS = 1300
 	const TOAST_MS = 15000
 	const MAX_INPUT_HEIGHT = 120
 	// Набор эмодзи (тот же, что в админке: vizaje-chat-admin/src/chat/emoji-data.ts)
@@ -104,7 +110,6 @@
 	// --- иконки (lucide, inline: виджет без сборки и зависимостей) -----------
 	const svg = (body, size = 24, extra = '') =>
 		`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${body}</svg>`
-	const ICON_BUBBLE = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 3h14a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H9.5L5.8 21.4A.6.6 0 0 1 5 21v-3a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/><path fill="none" stroke="var(--launcher-bg)" stroke-width="1.8" stroke-linecap="round" d="M8.5 10.6c.8 1.2 2 1.8 3.5 1.8s2.7-.6 3.5-1.8"/></svg>`
 	const ICON_CHEVRON = svg('<path d="m6 9 6 6 6-6"/>', 26)
 	const ICON_CLOSE = svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', 20)
 	const ICON_SEND = svg('<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>', 20)
@@ -122,10 +127,6 @@
 		'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
 		20
 	)
-	// 2×2 сетка точек — тайл-«логотип» в шапке и в превью нового сообщения
-	const ICON_GRID = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-<circle cx="7" cy="7" r="3.2" fill="currentColor"/><circle cx="17" cy="7" r="3.2" fill="currentColor"/>
-<circle cx="7" cy="17" r="3.2" fill="currentColor"/><circle cx="17" cy="17" r="3.2" fill="currentColor"/></svg>`
 	const ICON_MORE = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
 <circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/>
 <circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg>`
@@ -147,7 +148,7 @@
     --brand: #18181b; --brand-fg: #ffffff; --ring: #18181b; --danger: #dc2626;
     /* лаунчер и тайл-«логотип» всегда чёрные, независимо от темы — так на референсе */
     --launcher-bg: #000000; --launcher-fg: #ffffff; --shadow: 0 12px 48px rgba(0,0,0,.22);
-    --snow-color: #0ea5e9;
+    --snow-color: #0ea5e9; --typing-glow: #5ec8f8;
     color-scheme: light; }
   :host([data-theme="dark"]) {
     --bg: #17181c; --fg: #f4f4f5; --muted: #a1a1aa; --surface: #2a2b31; --border: #2e2f36;
@@ -173,6 +174,8 @@
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 6px 24px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06); transition: transform .15s ease; }
   .launcher:hover { transform: scale(1.06); }
+  .launcher .ic-chat { display: flex; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; }
+  .launcher-avatar { width: 100%; height: 100%; object-fit: cover; display: block; }
   .launcher .ic-close { display: none; }
   .root.open .launcher .ic-chat { display: none; }
   .root.open .launcher .ic-close { display: block; }
@@ -189,9 +192,10 @@
   .toast-title { font-weight: 600; }
   .toast-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; }
   .toast-meta { font-size: 12px; color: var(--muted); }
-  /* тайл-«логотип»: всегда чёрный с белой иконкой, как лаунчер — независимо от темы */
+  /* тайл-«логотип»: всегда чёрный, как лаунчер — независимо от темы; картинка поверх */
   .avatar { flex: none; width: 36px; height: 36px; border-radius: 10px; background: var(--launcher-bg); color: var(--launcher-fg);
-    display: flex; align-items: center; justify-content: center; }
+    display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
   /* проактивное приглашение над лаунчером (тот же слот, что у .toast — одновременно не показываются) */
   .proactive { right: max(var(--vz-offset-x, 20px), env(safe-area-inset-right)); bottom: calc(max(var(--vz-offset-y, 20px), env(safe-area-inset-bottom)) + 76px);
@@ -235,11 +239,27 @@
   .meta { margin: 3px 4px 0; font-size: 11px; color: var(--muted); }
   .row.failed .meta { color: var(--danger); }
   .row.system { align-self: center; max-width: 100%; margin: 8px 0; font-size: 12px; color: var(--muted); text-align: center; }
-  .typing .bubble { display: flex; align-items: center; gap: 4px; padding: 14px 16px; }
-  .typing .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite ease-in-out; }
-  .typing .dot:nth-child(2) { animation-delay: .2s; }
-  .typing .dot:nth-child(3) { animation-delay: .4s; }
-  @keyframes blink { 0%, 60%, 100% { opacity: .3; transform: none; } 30% { opacity: 1; transform: translateY(-2px); } }
+  /* typing-индикатор: светящийся силуэт кота + пузырь с тремя пульсирующими точками.
+     Тёмный чип и голубое свечение — фиксированные, не зависят от темы виджета,
+     иначе на светлом фоне свечение потеряется (проверено на обеих темах) */
+  .typing .bubble { background: transparent; padding: 0; display: flex; align-items: center; gap: 6px; }
+  .typing-cat { flex: none; width: 36px; height: 36px; overflow: visible; }
+  .typing-cat .cat-face { fill: #0b0d12; stroke: var(--typing-glow); stroke-width: 1.5; }
+  .typing-cat .cat-eye { fill: var(--typing-glow); }
+  .typing-cat .cat-face, .typing-cat .cat-eye {
+    filter: drop-shadow(0 0 2px var(--typing-glow)) drop-shadow(0 0 5px var(--typing-glow)); }
+  .typing-bubble { position: relative; display: flex; align-items: center; gap: 5px; padding: 11px 16px;
+    border-radius: 18px; background: #0b0d12; border: 1.5px solid var(--typing-glow);
+    box-shadow: 0 0 3px var(--typing-glow), 0 0 8px var(--typing-glow); }
+  .typing-bubble::before { content: ''; position: absolute; left: -7px; bottom: 7px; width: 10px; height: 10px;
+    background: #0b0d12; border-left: 1.5px solid var(--typing-glow); border-bottom: 1.5px solid var(--typing-glow);
+    border-radius: 0 0 0 6px; clip-path: polygon(0 0, 100% 100%, 0 100%); }
+  .typing-dot { width: 7px; height: 7px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fff, var(--typing-glow) 70%);
+    box-shadow: 0 0 5px var(--typing-glow); animation: typing-pulse 1.2s infinite ease-in-out; }
+  .typing-dot:nth-child(2) { animation-delay: .2s; }
+  .typing-dot:nth-child(3) { animation-delay: .4s; }
+  @keyframes typing-pulse { 0%, 60%, 100% { opacity: .4; transform: scale(.75); } 30% { opacity: 1; transform: scale(1.15); } }
   .line { display: flex; align-items: center; gap: 4px; max-width: 100%; }
   .bubble { min-width: 0; }
   .reply-btn { flex: none; width: 28px; height: 28px; border-radius: 50%; color: var(--muted);
@@ -339,7 +359,7 @@
   .garland .bulb { width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 4px currentColor; }
 
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
-  @media (prefers-reduced-motion: reduce) { .toast, .proactive, .root.open .panel, .typing .dot, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } .flake { animation: none; display: none; } }
+  @media (prefers-reduced-motion: reduce) { .toast, .proactive, .root.open .panel, .typing-dot, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } .flake { animation: none; display: none; } }
 
   @media (hover: none) and (pointer: coarse) {
     .reply-btn { display: none; }
@@ -355,7 +375,7 @@
 </style>
 <div class="root">
   <button class="toast" type="button" hidden>
-    <span class="avatar">${ICON_GRID}</span>
+    <span class="avatar"><img class="avatar-img" src="${AVATAR_URL}" alt="" /></span>
     <span class="toast-body">
       <span class="toast-title"></span>
       <span class="toast-text"></span>
@@ -373,7 +393,7 @@
   <section class="panel" role="dialog" aria-label="${TITLE.replace(/"/g, '&quot;')}">
     <div class="snow" aria-hidden="true" hidden></div>
     <header class="head">
-      <span class="avatar">${ICON_GRID}</span>
+      <span class="avatar"><img class="avatar-img" src="${AVATAR_URL}" alt="" /></span>
       <div class="head-text"><div class="title"></div><div class="sub">${SUBTITLE}</div></div>
       <div class="menu">
         <button class="icon-btn menu-btn" type="button" aria-label="Ещё" aria-haspopup="menu" aria-expanded="false">${ICON_MORE}</button>
@@ -414,7 +434,7 @@
 		}
   </section>
   <button class="launcher" type="button" aria-label="Открыть чат" aria-expanded="false">
-    <span class="ic-chat">${ICON_BUBBLE}</span><span class="ic-close">${ICON_CHEVRON}</span>
+    <span class="ic-chat"><img class="launcher-avatar" src="${AVATAR_URL}" alt="" /></span><span class="ic-close">${ICON_CHEVRON}</span>
     <span class="badge" hidden></span>
   </button>
 </div>`
@@ -524,8 +544,18 @@
 	const typingEl = document.createElement('div')
 	typingEl.className = 'row agent typing'
 	typingEl.setAttribute('aria-hidden', 'true')
-	typingEl.innerHTML =
-		'<div class="bubble"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>'
+	typingEl.innerHTML = `<div class="bubble">
+		<svg class="typing-cat" viewBox="0 0 36 36" aria-hidden="true">
+			<polygon class="cat-face" points="8,14 13,2 17,11" />
+			<polygon class="cat-face" points="28,14 23,2 19,11" />
+			<circle class="cat-face" cx="18" cy="20" r="13" />
+			<ellipse class="cat-eye" cx="13" cy="20" rx="2.2" ry="3.6" />
+			<ellipse class="cat-eye" cx="23" cy="20" rx="2.2" ry="3.6" />
+		</svg>
+		<div class="typing-bubble">
+			<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+		</div>
+	</div>`
 	const nearBottom = () =>
 		messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120
 	function hideTyping() {
@@ -1056,6 +1086,17 @@
 			}
 			// обычное сообщение
 			if (!msg.sender || renderedIds.has(msg.id)) return
+			// автоответ бота: сервер шлёт его сразу, без typing — имитируем задержку сами
+			if (msg.sender === 'bot') {
+				renderedIds.add(msg.id)
+				showTyping()
+				setTimeout(() => {
+					hideTyping()
+					renderMessage(msg)
+					onAgentMessage(msg, true)
+				}, BOT_TYPING_DELAY_MS)
+				return
+			}
 			if (isAgent(msg.sender)) hideTyping()
 			renderMessage(msg)
 			if (isAgent(msg.sender)) onAgentMessage(msg, true)
