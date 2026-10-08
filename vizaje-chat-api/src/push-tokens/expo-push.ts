@@ -11,7 +11,7 @@ export async function sendExpoPush(
 
 	for (let i = 0; i < expoTokens.length; i += CHUNK_SIZE) {
 		const chunk = expoTokens.slice(i, i + CHUNK_SIZE)
-		const messages = chunk.map(to => ({ to, ...notification }))
+		const messages = chunk.map(to => ({ to, sound: 'default', ...notification }))
 		try {
 			await fetch(EXPO_PUSH_URL, {
 				method: 'POST',
