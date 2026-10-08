@@ -148,7 +148,7 @@
     --brand: #18181b; --brand-fg: #ffffff; --ring: #18181b; --danger: #dc2626;
     /* лаунчер и тайл-«логотип» всегда чёрные, независимо от темы — так на референсе */
     --launcher-bg: #000000; --launcher-fg: #ffffff; --shadow: 0 12px 48px rgba(0,0,0,.22);
-    --snow-color: #0ea5e9; --typing-glow: #5ec8f8;
+    --snow-color: #0ea5e9;
     color-scheme: light; }
   :host([data-theme="dark"]) {
     --bg: #17181c; --fg: #f4f4f5; --muted: #a1a1aa; --surface: #2a2b31; --border: #2e2f36;
@@ -239,27 +239,60 @@
   .meta { margin: 3px 4px 0; font-size: 11px; color: var(--muted); }
   .row.failed .meta { color: var(--danger); }
   .row.system { align-self: center; max-width: 100%; margin: 8px 0; font-size: 12px; color: var(--muted); text-align: center; }
-  /* typing-индикатор: светящийся силуэт кота + пузырь с тремя пульсирующими точками.
-     Тёмный чип и голубое свечение — фиксированные, не зависят от темы виджета,
-     иначе на светлом фоне свечение потеряется (проверено на обеих темах) */
-  .typing .bubble { background: transparent; padding: 0; display: flex; align-items: center; gap: 6px; }
-  .typing-cat { flex: none; width: 36px; height: 36px; overflow: visible; }
-  .typing-cat .cat-face { fill: #0b0d12; stroke: var(--typing-glow); stroke-width: 1.5; }
-  .typing-cat .cat-eye { fill: var(--typing-glow); }
-  .typing-cat .cat-face, .typing-cat .cat-eye {
-    filter: drop-shadow(0 0 2px var(--typing-glow)) drop-shadow(0 0 5px var(--typing-glow)); }
-  .typing-bubble { position: relative; display: flex; align-items: center; gap: 5px; padding: 11px 16px;
-    border-radius: 18px; background: #0b0d12; border: 1.5px solid var(--typing-glow);
-    box-shadow: 0 0 3px var(--typing-glow), 0 0 8px var(--typing-glow); }
-  .typing-bubble::before { content: ''; position: absolute; left: -7px; bottom: 7px; width: 10px; height: 10px;
-    background: #0b0d12; border-left: 1.5px solid var(--typing-glow); border-bottom: 1.5px solid var(--typing-glow);
-    border-radius: 0 0 0 6px; clip-path: polygon(0 0, 100% 100%, 0 100%); }
-  .typing-dot { width: 7px; height: 7px; border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #fff, var(--typing-glow) 70%);
-    box-shadow: 0 0 5px var(--typing-glow); animation: typing-pulse 1.2s infinite ease-in-out; }
-  .typing-dot:nth-child(2) { animation-delay: .2s; }
-  .typing-dot:nth-child(3) { animation-delay: .4s; }
-  @keyframes typing-pulse { 0%, 60%, 100% { opacity: .4; transform: scale(.75); } 30% { opacity: 1; transform: scale(1.15); } }
+  /* typing-индикатор: светящийся аватар Vizi (SVG-градиенты/фильтры) + пузырь
+     с тремя пульсирующими точками. Свечение фиксированное, не зависит от
+     темы виджета, иначе на светлом фоне потеряется */
+  .row.agent.typing .bubble { background: transparent; padding: 0; }
+  .typing { --vizi-bubble-border: rgba(158, 190, 255, 0.72); }
+  .typing .vizi-typing { display: inline-flex; align-items: center; gap: 10px; padding: 4px 0; isolation: isolate; }
+
+  .vizi-typing-avatar { width: 46px; height: 46px; flex: 0 0 auto; overflow: visible;
+    transform-origin: 50% 70%; animation: vizi-idle 2.8s ease-in-out infinite; }
+  .vizi-body, .vizi-ear { fill: url(#viziBodyGradient); }
+  .vizi-rim { fill: none; stroke: url(#viziRimGradient); stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
+  .vizi-eye { fill: url(#viziEyeGradient); animation: vizi-eye-glow 1.8s ease-in-out infinite; }
+
+  .vizi-typing-bubble { position: relative; min-width: 96px; height: 38px; padding: 0 28px;
+    border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+    background: radial-gradient(circle at 28% 35%, rgba(176, 205, 255, .16), transparent 24%),
+      linear-gradient(180deg, rgba(30, 38, 55, .9), rgba(6, 9, 15, .86));
+    border: 1.4px solid var(--vizi-bubble-border);
+    box-shadow: 0 0 3px rgba(218, 232, 255, .85), 0 0 11px rgba(95, 145, 255, .52),
+      0 0 26px rgba(70, 118, 255, .28), inset 0 1px 1px rgba(255, 255, 255, .18),
+      inset 0 -14px 24px rgba(0, 0, 0, .28);
+    animation: vizi-bubble-breathe 2.2s ease-in-out infinite; }
+  /* мягкий «носик» пузыря, как на референсе */
+  .vizi-typing-bubble::before { content: ''; position: absolute; left: -13px; top: 50%; width: 23px; height: 20px;
+    transform: translateY(-50%);
+    background: radial-gradient(circle at 100% 50%, rgba(15, 21, 34, .95) 0 62%, transparent 64%);
+    filter: drop-shadow(-1px 0 1px rgba(220, 235, 255, .75)) drop-shadow(-3px 0 8px rgba(100, 150, 255, .45));
+    clip-path: polygon(0 50%, 100% 6%, 100% 94%); }
+  /* внутренний свет по верхнему краю */
+  .vizi-typing-bubble::after { content: ''; position: absolute; inset: 1px 1px auto 1px; height: 46%;
+    border-radius: 999px 999px 40px 40px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, 0));
+    pointer-events: none; }
+
+  .vizi-dot { width: 12px; height: 12px; border-radius: 999px;
+    background: radial-gradient(circle at 36% 30%, #fff 0 12%, #dce9ff 28%, #79a7ff 68%, #38507f 100%);
+    box-shadow: 0 0 4px rgba(220, 235, 255, .9), 0 0 12px rgba(118, 165, 255, .65);
+    opacity: .42; transform: scale(.78); animation: vizi-dot-pulse 1.35s ease-in-out infinite; }
+  .vizi-dot:nth-child(2) { animation-delay: .18s; }
+  .vizi-dot:nth-child(3) { animation-delay: .36s; }
+
+  @keyframes vizi-dot-pulse {
+    0%, 68%, 100% { opacity: .34; transform: scale(.72); filter: blur(.1px); }
+    32% { opacity: 1; transform: scale(1); filter: blur(0); }
+  }
+  @keyframes vizi-bubble-breathe {
+    0%, 100% { box-shadow: 0 0 3px rgba(218, 232, 255, .72), 0 0 10px rgba(95, 145, 255, .45),
+      0 0 24px rgba(70, 118, 255, .22), inset 0 1px 1px rgba(255, 255, 255, .16), inset 0 -14px 24px rgba(0, 0, 0, .28); }
+    50% { box-shadow: 0 0 4px rgba(234, 242, 255, .95), 0 0 15px rgba(116, 166, 255, .62),
+      0 0 34px rgba(70, 118, 255, .34), inset 0 1px 1px rgba(255, 255, 255, .2), inset 0 -14px 24px rgba(0, 0, 0, .28); }
+  }
+  @keyframes vizi-idle { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-1px) scale(1.015); } }
+  @keyframes vizi-eye-glow { 0%, 100% { opacity: .92; } 50% { opacity: 1; } }
   .line { display: flex; align-items: center; gap: 4px; max-width: 100%; }
   .bubble { min-width: 0; }
   .reply-btn { flex: none; width: 28px; height: 28px; border-radius: 50%; color: var(--muted);
@@ -359,7 +392,7 @@
   .garland .bulb { width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 4px currentColor; }
 
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
-  @media (prefers-reduced-motion: reduce) { .toast, .proactive, .root.open .panel, .typing-dot, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } .flake { animation: none; display: none; } }
+  @media (prefers-reduced-motion: reduce) { .toast, .proactive, .root.open .panel, .vizi-typing-avatar, .vizi-typing-bubble, .vizi-dot, .vizi-eye, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } .flake { animation: none; display: none; } }
 
   @media (hover: none) and (pointer: coarse) {
     .reply-btn { display: none; }
@@ -545,15 +578,77 @@
 	typingEl.className = 'row agent typing'
 	typingEl.setAttribute('aria-hidden', 'true')
 	typingEl.innerHTML = `<div class="bubble">
-		<svg class="typing-cat" viewBox="0 0 36 36" aria-hidden="true">
-			<polygon class="cat-face" points="8,14 13,2 17,11" />
-			<polygon class="cat-face" points="28,14 23,2 19,11" />
-			<circle class="cat-face" cx="18" cy="20" r="13" />
-			<ellipse class="cat-eye" cx="13" cy="20" rx="2.2" ry="3.6" />
-			<ellipse class="cat-eye" cx="23" cy="20" rx="2.2" ry="3.6" />
-		</svg>
-		<div class="typing-bubble">
-			<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+		<div class="vizi-typing">
+			<svg class="vizi-typing-avatar" viewBox="0 0 64 64" aria-hidden="true">
+				<defs>
+					<radialGradient id="viziBodyGradient" cx="38%" cy="30%" r="72%">
+						<stop offset="0%" stop-color="#252b36"/>
+						<stop offset="45%" stop-color="#080a0f"/>
+						<stop offset="100%" stop-color="#020308"/>
+					</radialGradient>
+					<linearGradient id="viziRimGradient" x1="12" y1="8" x2="54" y2="58">
+						<stop offset="0%" stop-color="#f2f7ff" stop-opacity="0.95"/>
+						<stop offset="34%" stop-color="#9fc3ff" stop-opacity="0.72"/>
+						<stop offset="70%" stop-color="#5b7fd8" stop-opacity="0.28"/>
+						<stop offset="100%" stop-color="#ffffff" stop-opacity="0.08"/>
+					</linearGradient>
+					<radialGradient id="viziEyeGradient" cx="40%" cy="28%" r="70%">
+						<stop offset="0%" stop-color="#ffffff"/>
+						<stop offset="55%" stop-color="#dbe9ff"/>
+						<stop offset="100%" stop-color="#8db8ff"/>
+					</radialGradient>
+					<filter id="viziGlow" x="-80%" y="-80%" width="260%" height="260%">
+						<feGaussianBlur stdDeviation="3.5" result="blur1"/>
+						<feColorMatrix in="blur1" type="matrix" values="
+							0 0 0 0 0.38
+							0 0 0 0 0.62
+							0 0 0 0 1
+							0 0 0 0.85 0" result="blueGlow"/>
+						<feGaussianBlur stdDeviation="7" result="blur2"/>
+						<feColorMatrix in="blur2" type="matrix" values="
+							0 0 0 0 0.22
+							0 0 0 0 0.48
+							0 0 0 0 1
+							0 0 0 0.35 0" result="softGlow"/>
+						<feMerge>
+							<feMergeNode in="softGlow"/>
+							<feMergeNode in="blueGlow"/>
+							<feMergeNode in="SourceGraphic"/>
+						</feMerge>
+					</filter>
+					<filter id="viziEyeGlow" x="-120%" y="-120%" width="340%" height="340%">
+						<feGaussianBlur stdDeviation="2.2" result="eyeBlur"/>
+						<feColorMatrix in="eyeBlur" type="matrix" values="
+							0 0 0 0 0.55
+							0 0 0 0 0.75
+							0 0 0 0 1
+							0 0 0 0.8 0" result="eyeGlow"/>
+						<feMerge>
+							<feMergeNode in="eyeGlow"/>
+							<feMergeNode in="SourceGraphic"/>
+						</feMerge>
+					</filter>
+				</defs>
+				<g class="vizi-avatar-glow" filter="url(#viziGlow)">
+					<path class="vizi-ear vizi-ear-left"
+						d="M15.5 23.5C15.2 14.6 20.4 7.5 26.8 12.3C29.9 14.6 30.5 19.5 29.2 23.8C25.6 22.5 20.3 22.3 15.5 23.5Z" />
+					<path class="vizi-ear vizi-ear-right"
+						d="M48.5 23.5C48.8 14.6 43.6 7.5 37.2 12.3C34.1 14.6 33.5 19.5 34.8 23.8C38.4 22.5 43.7 22.3 48.5 23.5Z" />
+					<circle class="vizi-body" cx="32" cy="34" r="22.5"/>
+					<path class="vizi-rim" d="M15.5 23.5C15.2 14.6 20.4 7.5 26.8 12.3C29.9 14.6 30.5 19.5 29.2 23.8" />
+					<path class="vizi-rim" d="M48.5 23.5C48.8 14.6 43.6 7.5 37.2 12.3C34.1 14.6 33.5 19.5 34.8 23.8" />
+					<path class="vizi-rim" d="M13.8 36.5C14.6 49.5 24.8 56.7 36.9 54.4C48.5 52.2 55.2 41 52.5 29.7" />
+				</g>
+				<g filter="url(#viziEyeGlow)">
+					<rect class="vizi-eye" x="23" y="29" width="6.4" height="12.8" rx="3.2"/>
+					<rect class="vizi-eye" x="34.6" y="29" width="6.4" height="12.8" rx="3.2"/>
+				</g>
+			</svg>
+			<div class="vizi-typing-bubble" aria-label="Vizi печатает">
+				<span class="vizi-dot"></span>
+				<span class="vizi-dot"></span>
+				<span class="vizi-dot"></span>
+			</div>
 		</div>
 	</div>`
 	const nearBottom = () =>
