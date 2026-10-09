@@ -112,7 +112,7 @@
 		`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${body}</svg>`
 	// иконка лаунчера (закрытое состояние) — пузырь currentColor (белый на чёрной
 	// кнопке), улыбка — вырез цветом кнопки, тот же приём, что у ICON_CHEVRON ниже
-	const ICON_LAUNCHER = `<svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 240 240" aria-hidden="true">
+	const ICON_LAUNCHER = `<svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 240 240" aria-hidden="true">
 <path fill="currentColor" d="M18 12 L102 12 Q110 12 110 20 L110 112 Q110 120 102 120 L50 120 L34 140 Q32 143 32 139 L32 120 L18 120 Q10 120 10 112 L10 20 Q10 12 18 12 Z"/>
 <path fill="none" stroke="var(--launcher-bg)" stroke-width="7" stroke-linecap="round" d="M40 84 Q60 96 80 84"/>
 </svg>`
@@ -180,7 +180,7 @@
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 6px 24px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.06); transition: transform .15s ease; }
   .launcher:hover { transform: scale(1.06); }
-  .launcher .ic-chat { display: flex; width: 38px; height: 38px; }
+  .launcher .ic-chat { display: flex; width: 42px; height: 42px; }
   .launcher .ic-close { display: none; }
   .root.open .launcher .ic-chat { display: none; }
   .root.open .launcher .ic-close { display: block; }
