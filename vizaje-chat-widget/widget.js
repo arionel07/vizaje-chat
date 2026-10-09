@@ -112,7 +112,10 @@
 		`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${body}</svg>`
 	// иконка лаунчера (закрытое состояние) — пузырь currentColor (белый на чёрной
 	// кнопке), улыбка — вырез цветом кнопки, тот же приём, что у ICON_CHEVRON ниже
-	const ICON_LAUNCHER = `<svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 240 240" aria-hidden="true">
+	// viewBox обрезан по реальным границам рисунка (исходный 0 0 240 240 — это холст,
+	// сам рисунок в нём ~100×131 и прижат к левому верхнему углу); иначе увеличение
+	// width/height у <svg> просто растягивало пустой холст, а значок не рос и не центрировался
+	const ICON_LAUNCHER = `<svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="-5.5 12 131 131" aria-hidden="true">
 <path fill="currentColor" d="M18 12 L102 12 Q110 12 110 20 L110 112 Q110 120 102 120 L50 120 L34 140 Q32 143 32 139 L32 120 L18 120 Q10 120 10 112 L10 20 Q10 12 18 12 Z"/>
 <path fill="none" stroke="var(--launcher-bg)" stroke-width="7" stroke-linecap="round" d="M40 84 Q60 96 80 84"/>
 </svg>`
