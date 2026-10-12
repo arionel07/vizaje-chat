@@ -11,13 +11,16 @@ import {
 	Send,
 	Smile,
 	Square,
+	Trash2,
 	User,
 	X
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import {
+	deleteConversation,
 	exportConversation,
+	fetchConversationDeleteEnabled,
 	fetchMessages,
 	markRead,
 	MESSAGES_PAGE_SIZE,
@@ -68,7 +71,8 @@ export function ChatWindow({
 	onBack,
 	onActivity,
 	onStatusChange,
-	onAssigneeChange
+	onAssigneeChange,
+	onDelete
 }: {
 	token: string
 	conversation: Conversation
@@ -78,6 +82,7 @@ export function ChatWindow({
 	onActivity?: () => void // сообщение отправлено или беседа прочитана — обновить список
 	onStatusChange: (status: 'open' | 'closed') => void
 	onAssigneeChange: (assigneeId: number | null, assigneeEmail: string | null) => void
+	onDelete: () => void // беседа удалена — вернуться к списку и обновить его
 }) {
 	const conversationId = conversation.id
 	const closed = conversation.status === 'closed'
@@ -88,6 +93,8 @@ export function ChatWindow({
 	const [toggling, setToggling] = useState(false)
 	const [assigning, setAssigning] = useState(false)
 	const [exporting, setExporting] = useState(false)
+	const [deleteEnabled, setDeleteEnabled] = useState(false)
+	const [deleting, setDeleting] = useState(false)
 	const [visitorTyping, setVisitorTyping] = useState(false)
 	const [replyTarget, setReplyTarget] = useState<ReplyTo | null>(null)
 	const [emojiOpen, setEmojiOpen] = useState(false)
@@ -142,6 +149,12 @@ export function ChatWindow({
 	useEffect(() => {
 		fetchMessages(token, conversationId).then(applyLatest).catch(() => {})
 	}, [token, conversationId, applyLatest])
+
+	useEffect(() => {
+		fetchConversationDeleteEnabled(token)
+			.then(setDeleteEnabled)
+			.catch(() => setDeleteEnabled(false))
+	}, [token])
 
 	// прокрутка вниз: при загрузке, своих сообщениях и новых, если читаем низ чата
 	useEffect(() => {
@@ -462,6 +475,19 @@ export function ChatWindow({
 		}
 	}
 
+	async function handleDelete() {
+		if (deleting) return
+		if (!confirm(`Удалить беседу #${conversationId}? Это необратимо.`)) return
+		setDeleting(true)
+		try {
+			await deleteConversation(token, conversationId)
+			onDelete()
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'Не удалось удалить беседу')
+			setDeleting(false)
+		}
+	}
+
 	async function handleAssign(value: string) {
 		if (assigning) return
 		const assigneeId = value ? Number(value) : null
@@ -537,6 +563,18 @@ export function ChatWindow({
 				>
 					<Download aria-hidden="true" className="h-4 w-4" />
 				</button>
+				{deleteEnabled && (
+					<button
+						type="button"
+						onClick={handleDelete}
+						disabled={deleting}
+						aria-label="Удалить беседу"
+						title="Удалить беседу"
+						className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-transparent text-zinc-700 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:border-red-500/40 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+					>
+						<Trash2 aria-hidden="true" className="h-4 w-4" />
+					</button>
+				)}
 				<button
 					type="button"
 					onClick={toggleStatus}

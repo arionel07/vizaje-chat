@@ -339,6 +339,18 @@ export async function updateConversationStatus(
 	return updated
 }
 
+// безвозвратно: сообщения удаляются вместе с беседой (reply_to_id у них —
+// onDelete: 'set null', порядок удаления не важен). Доступ гейтится настройкой
+// conversationDeleteEnabled — см. settings/service.ts и роут
+export async function deleteConversation(conversationId: number) {
+	await db.delete(messages).where(eq(messages.conversationId, conversationId))
+	const [deleted] = await db
+		.delete(conversations)
+		.where(eq(conversations.id, conversationId))
+		.returning({ id: conversations.id })
+	return !!deleted
+}
+
 // таймзона фиксированная, как в рабочем графике — экспорт не зависит от TZ сервера
 const EXPORT_TIMEZONE = 'Europe/Chisinau'
 const exportDateParts = new Intl.DateTimeFormat('ru-RU', {

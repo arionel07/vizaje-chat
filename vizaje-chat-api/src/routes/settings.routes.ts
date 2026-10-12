@@ -1,8 +1,10 @@
 import { Elysia, t } from 'elysia'
 import { verifyToken } from '../auth/guard'
 import {
+	getConversationDeleteEnabled,
 	getSchedule,
 	getWidgetTheme,
+	setConversationDeleteEnabled,
 	setSchedule,
 	setWidgetTheme
 } from '../settings/service'
@@ -75,4 +77,24 @@ export const settingsRoutes = new Elysia()
 			}
 		},
 		{ body: t.Object({ theme: t.String() }) }
+	)
+	.get('/admin/settings/conversation-delete', async ({ headers, set }) => {
+		const admin = verifyToken(headers.authorization)
+		if (!admin) {
+			set.status = 401
+			return { error: 'Unauthorized' }
+		}
+		return { enabled: await getConversationDeleteEnabled() }
+	})
+	.put(
+		'/admin/settings/conversation-delete',
+		async ({ headers, body, set }) => {
+			const admin = verifyToken(headers.authorization)
+			if (!admin) {
+				set.status = 401
+				return { error: 'Unauthorized' }
+			}
+			return { enabled: await setConversationDeleteEnabled(body.enabled) }
+		},
+		{ body: t.Object({ enabled: t.Boolean() }) }
 	)

@@ -2,15 +2,17 @@ import { ChevronLeft } from 'lucide-react'
 import { useState } from 'react'
 import { BotResponsesSettings } from './BotResponsesSettings'
 import { CannedResponsesSettings } from './CannedResponsesSettings'
+import { DangerSettings } from './DangerSettings'
 import { ScheduleSettings } from './ScheduleSettings'
 import { ThemeSettings } from './ThemeSettings'
 
-type Tab = 'schedule' | 'canned' | 'bot' | 'theme'
+type Tab = 'schedule' | 'canned' | 'bot' | 'theme' | 'danger'
 const TABS: { id: Tab; label: string }[] = [
 	{ id: 'schedule', label: 'Рабочий график' },
 	{ id: 'canned', label: 'Шаблоны ответов' },
 	{ id: 'bot', label: 'Ответы бота' },
-	{ id: 'theme', label: 'Тема виджета' }
+	{ id: 'theme', label: 'Тема виджета' },
+	{ id: 'danger', label: 'Опасная зона' }
 ]
 
 export function SettingsPanel({
@@ -68,8 +70,10 @@ export function SettingsPanel({
 					<CannedResponsesSettings token={token} onChange={onCannedResponsesChange} />
 				) : tab === 'bot' ? (
 					<BotResponsesSettings token={token} />
-				) : (
+				) : tab === 'theme' ? (
 					<ThemeSettings token={token} />
+				) : (
+					<DangerSettings token={token} />
 				)}
 			</div>
 		</div>

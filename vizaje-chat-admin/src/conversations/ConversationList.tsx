@@ -7,12 +7,15 @@ import {
 	Search,
 	Send,
 	Settings,
+	Trash2,
 	User,
 	X
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
 	CONVERSATIONS_PAGE_SIZE,
+	deleteConversation,
+	fetchConversationDeleteEnabled,
 	fetchConversations,
 	fetchCounts,
 	type Conversation,
@@ -110,6 +113,10 @@ export function ConversationList({
 	const [loading, setLoading] = useState(true)
 	const [loadingMore, setLoadingMore] = useState(false)
 	const [loadFailed, setLoadFailed] = useState(false)
+	// «Опасная зона» в настройках — выключено по умолчанию, кнопка удаления
+	// нигде не показывается, пока явно не включили
+	const [deleteEnabled, setDeleteEnabled] = useState(false)
+	const [deletingId, setDeletingId] = useState<number | null>(null)
 	// беседы, где посетитель сейчас печатает (гаснет через TYPING_SHOW_MS)
 	const [typingIds, setTypingIds] = useState<Set<number>>(new Set())
 	const typingTimersRef = useRef(new Map<number, ReturnType<typeof setTimeout>>())
@@ -133,6 +140,29 @@ export function ConversationList({
 	useEffect(() => {
 		ensureNotificationPermission()
 	}, [])
+
+	// перечитываем при каждом refreshKey — в т.ч. когда вернулись из настроек,
+	// где могли переключить «Опасная зона»
+	useEffect(() => {
+		fetchConversationDeleteEnabled(token)
+			.then(setDeleteEnabled)
+			.catch(() => setDeleteEnabled(false))
+	}, [token, refreshKey])
+
+	async function handleDelete(id: number) {
+		if (!confirm(`Удалить беседу #${id}? Это необратимо.`)) return
+		setDeletingId(id)
+		try {
+			await deleteConversation(token, id)
+			setConversations(prev => prev.filter(c => c.id !== id))
+			countRef.current -= 1
+			fetchCounts(token).then(setCounts).catch(() => {})
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'Не удалось удалить беседу')
+		} finally {
+			setDeletingId(null)
+		}
+	}
 
 	// счётчик непрочитанных бесед — на favicon и в заголовке вкладки
 	useEffect(() => {
@@ -437,12 +467,14 @@ export function ConversationList({
 						const selected = c.id === selectedId
 						const unread = selected ? 0 : c.unreadCount
 						return (
-							<li key={c.id}>
+							<li key={c.id} className="group relative">
 								<button
 									type="button"
 									onClick={() => onSelect(c)}
 									aria-current={selected ? 'true' : undefined}
 									className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:focus-visible:ring-zinc-300/30 ${
+										deleteEnabled ? 'pr-11' : ''
+									} ${
 										selected
 											? 'bg-zinc-100 dark:bg-zinc-800'
 											: 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'
@@ -516,6 +548,21 @@ export function ConversationList({
 										</span>
 									</span>
 								</button>
+								{deleteEnabled && (
+									<button
+										type="button"
+										onClick={e => {
+											e.stopPropagation()
+											handleDelete(c.id)
+										}}
+										disabled={deletingId === c.id}
+										aria-label={`Удалить беседу #${c.id}`}
+										title="Удалить беседу"
+										className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg text-zinc-400 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-60 group-hover:opacity-100 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+									>
+										<Trash2 aria-hidden="true" className="h-4 w-4" />
+									</button>
+								)}
 							</li>
 						)
 					})}

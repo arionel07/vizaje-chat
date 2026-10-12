@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia'
 import { verifyToken } from '../auth/guard'
 import { publishToAdmins, publishToConversation } from '../chat/events'
 import {
+	deleteConversation,
 	exportConversationText,
 	getConversationCounts,
 	getConversations,
@@ -12,6 +13,7 @@ import {
 	updateConversationAssignee,
 	updateConversationStatus
 } from '../chat/service'
+import { getConversationDeleteEnabled } from '../settings/service'
 
 const messagesQuery = t.Object({
 	limit: t.Optional(t.Numeric()),
@@ -156,3 +158,25 @@ export const conversationsRoutes = new Elysia()
 			})
 		}
 	)
+	// безвозвратно — доступно, только пока явно включено в настройках
+	// (Настройки → Опасная зона), выключено по умолчанию
+	.delete('/admin/conversations/:id', async ({ headers, params, set }) => {
+		const admin = verifyToken(headers.authorization)
+		if (!admin) {
+			set.status = 401
+			return { error: 'Unauthorized' }
+		}
+		if (!(await getConversationDeleteEnabled())) {
+			set.status = 403
+			return { error: 'Удаление бесед сейчас выключено в настройках' }
+		}
+		const conversationId = Number(params.id)
+		const deleted = await deleteConversation(conversationId)
+		if (!deleted) {
+			set.status = 404
+			return { error: 'Conversation not found' }
+		}
+		// другие открытые вкладки админки уберут беседу из списка/чата без перезагрузки
+		publishToAdmins({ type: 'conversationDeleted', conversationId })
+		return { ok: true }
+	})

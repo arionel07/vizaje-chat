@@ -176,6 +176,31 @@ export async function setWidgetTheme(input: unknown): Promise<WidgetTheme> {
 	return theme
 }
 
+// разрешение на удаление бесед из админки — выключено по умолчанию (опасное
+// действие, не должно быть доступно операторам просто так); включается точечно,
+// когда реально нужно почистить мусорные/пустые беседы
+const CONVERSATION_DELETE_KEY = 'conversationDeleteEnabled'
+
+export async function getConversationDeleteEnabled(): Promise<boolean> {
+	const [row] = await db
+		.select({ value: settings.value })
+		.from(settings)
+		.where(eq(settings.key, CONVERSATION_DELETE_KEY))
+	return row?.value === true
+}
+
+export async function setConversationDeleteEnabled(input: unknown): Promise<boolean> {
+	if (typeof input !== 'boolean') throw new Error('enabled должен быть boolean')
+	await db
+		.insert(settings)
+		.values({ key: CONVERSATION_DELETE_KEY, value: input, updatedAt: new Date() })
+		.onConflictDoUpdate({
+			target: settings.key,
+			set: { value: input, updatedAt: new Date() }
+		})
+	return input
+}
+
 // человекочитаемая сводка для баннера в виджете, например "Пн–Пт 09:00–18:00, Сб 10:00–14:00":
 // склеивает подряд идущие дни с одинаковым интервалом в один диапазон
 export function summarizeSchedule(schedule: Schedule) {

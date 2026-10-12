@@ -120,6 +120,10 @@ function App() {
 						onAssigneeChange={(assigneeId, assigneeEmail) =>
 							setSelected(prev => (prev ? { ...prev, assigneeId, assigneeEmail } : prev))
 						}
+						onDelete={() => {
+							setSelected(null)
+							refreshList()
+						}}
 					/>
 				) : (
 					<div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-zinc-500 dark:text-zinc-400">

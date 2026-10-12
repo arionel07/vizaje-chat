@@ -208,6 +208,19 @@ export async function updateAssignee(
 	return res.json() as Promise<{ assigneeId: number | null; assigneeEmail: string | null }>
 }
 
+// безвозвратно; 403, пока выключено в настройках (см. fetchConversationDeleteEnabled)
+export async function deleteConversation(token: string, conversationId: number) {
+	const res = await fetch(`${API_URL}/admin/conversations/${conversationId}`, {
+		method: 'DELETE',
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	if (!res.ok) {
+		const body = await res.json().catch(() => null)
+		throw new Error(body?.error || `Request failed: ${res.status}`)
+	}
+}
+
 export type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 export type DaySchedule = { enabled: boolean; start: string; end: string } // start/end — "HH:MM"
 export type Schedule = { timezone: string; days: Record<DayKey, DaySchedule> }
@@ -266,6 +279,27 @@ export async function updateWidgetTheme(token: string, theme: WidgetTheme) {
 		throw new Error(body?.error || `Request failed: ${res.status}`)
 	}
 	return ((await res.json()) as { theme: WidgetTheme }).theme
+}
+
+// разрешение на удаление бесед — выключено по умолчанию, включается точечно
+export async function fetchConversationDeleteEnabled(token: string) {
+	const res = await fetch(`${API_URL}/admin/settings/conversation-delete`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return ((await res.json()) as { enabled: boolean }).enabled
+}
+
+export async function updateConversationDeleteEnabled(token: string, enabled: boolean) {
+	const res = await fetch(`${API_URL}/admin/settings/conversation-delete`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify({ enabled })
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return ((await res.json()) as { enabled: boolean }).enabled
 }
 
 export type CannedResponse = {
