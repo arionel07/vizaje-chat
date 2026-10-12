@@ -11,7 +11,7 @@ type TelegramUpdate = {
 	callback_query?: {
 		id: string
 		data?: string
-		message?: { chat?: { id?: number | string } }
+		message?: { chat?: { id?: number | string }; message_id?: number }
 	}
 }
 
@@ -33,7 +33,12 @@ export const telegramRoutes = new Elysia().post(
 		const callback = update.callback_query
 		const callbackChatId = callback?.message?.chat?.id
 		if (callback && callbackChatId !== undefined && callback.data) {
-			await handleTelegramCallback(String(callbackChatId), callback.data, callback.id)
+			await handleTelegramCallback(
+				String(callbackChatId),
+				callback.data,
+				callback.id,
+				callback.message?.message_id
+			)
 			return { ok: true }
 		}
 

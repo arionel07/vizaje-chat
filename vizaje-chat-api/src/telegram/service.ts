@@ -93,6 +93,36 @@ export async function answerTelegramCallback(callbackQueryId: string) {
 	).catch(error => console.error('answerCallbackQuery failed:', error))
 }
 
+type KeyboardClearer = (chatId: string, messageId: number) => Promise<unknown>
+
+// снимает клавиатуру с уже обработанного сообщения — иначе старые кнопки
+// остаются кликабельными вечно, и нажатие на экран из прошлого «отматывает»
+// состояние назад (поймано на реальном тесте: нажали кнопку в Telegram
+// на давно пройденном FAQ-экране уже после перехода в режим поддержки)
+let keyboardClearer: KeyboardClearer = async (chatId, messageId) => {
+	if (!TELEGRAM_BOT_TOKEN) return
+	await fetch(
+		`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageReplyMarkup`,
+		{
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				chat_id: chatId,
+				message_id: messageId,
+				reply_markup: { inline_keyboard: [] }
+			})
+		}
+	).catch(error => console.error('editMessageReplyMarkup failed:', error))
+}
+
+export function setTelegramKeyboardClearer(fn: KeyboardClearer) {
+	keyboardClearer = fn
+}
+
+export async function clearTelegramKeyboard(chatId: string, messageId: number) {
+	await keyboardClearer(chatId, messageId)
+}
+
 // беседа + chatId → { channel, telegramChatId } — чтобы при ответе оператора
 // понять, нужно ли дублировать сообщение в Telegram (см. ws.routes.ts)
 export async function getConversationChannel(conversationId: number) {

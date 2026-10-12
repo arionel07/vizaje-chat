@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '../src/db/client'
 import { conversations } from '../src/db/schema'
 import {
+	setTelegramKeyboardClearer,
 	setTelegramKeyboardSender,
 	setTelegramSender,
 	type Button
@@ -14,6 +15,7 @@ let adminToken: string
 // перехватываем всё, что бот шлёт в Telegram — и обычный текст, и меню с кнопками
 const texts: { chatId: string; text: string }[] = []
 const keyboards: { chatId: string; text: string; rows: Button[][] }[] = []
+const clearedKeyboards: { chatId: string; messageId: number }[] = []
 
 beforeAll(async () => {
 	await resetDb()
@@ -24,20 +26,35 @@ beforeAll(async () => {
 	setTelegramKeyboardSender(async (chatId, text, rows) => {
 		keyboards.push({ chatId, text, rows })
 	})
+	setTelegramKeyboardClearer(async (chatId, messageId) => {
+		clearedKeyboards.push({ chatId, messageId })
+	})
 })
 
 beforeEach(() => {
 	texts.length = 0
 	keyboards.length = 0
+	clearedKeyboards.length = 0
 })
 
 const message = (chatId: number, text: string) => ({
 	method: 'POST' as const,
 	body: { message: { chat: { id: chatId }, text } }
 })
-const callback = (chatId: number, data: string, id = `${chatId}-${data}`) => ({
+// messageId — id сообщения, под которым была нажата кнопка (для снятия клавиатуры)
+const callback = (
+	chatId: number,
+	data: string,
+	{ id = `${chatId}-${data}`, messageId }: { id?: string; messageId?: number } = {}
+) => ({
 	method: 'POST' as const,
-	body: { callback_query: { id, data, message: { chat: { id: chatId } } } }
+	body: {
+		callback_query: {
+			id,
+			data,
+			message: { chat: { id: chatId }, ...(messageId !== undefined ? { message_id: messageId } : {}) }
+		}
+	}
 })
 const lastKeyboardButtons = () => keyboards.at(-1)!.rows.flat()
 const findConversationByChat = (chatId: number) =>
@@ -97,6 +114,16 @@ describe('Telegram-бот: навигация по меню (ничего не �
 			'cat:other',
 			'back'
 		])
+	})
+
+	test('нажатие кнопки снимает клавиатуру именно с того сообщения, где её нажали', async () => {
+		const chatId = 1005
+		await api('/telegram/webhook', callback(chatId, 'start', { messageId: 501 }))
+		expect(clearedKeyboards).toContainEqual({ chatId: String(chatId), messageId: 501 })
+
+		await api('/telegram/webhook', callback(chatId, 'lang:ru', { messageId: 502 }))
+		expect(clearedKeyboards).toContainEqual({ chatId: String(chatId), messageId: 502 })
+		expect(clearedKeyboards).toHaveLength(2)
 	})
 
 	test('категория «Другое» — без FAQ, сразу просит написать вопрос', async () => {

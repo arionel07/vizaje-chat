@@ -15,6 +15,7 @@ import {
 import {
 	type Button,
 	answerTelegramCallback,
+	clearTelegramKeyboard,
 	getOrCreateConversationForChat,
 	sendTelegramButtons,
 	sendTelegramMessage
@@ -100,10 +101,14 @@ export async function handleTelegramText(chatId: string, text: string) {
 export async function handleTelegramCallback(
 	chatId: string,
 	data: string,
-	callbackQueryId: string
+	callbackQueryId: string,
+	messageId?: number
 ) {
 	// иначе кнопка в клиенте Telegram продолжает «крутиться» после нажатия
 	await answerTelegramCallback(callbackQueryId)
+	// снимаем клавиатуру с этого же сообщения — иначе она остаётся кликабельной
+	// вечно, и нажатие на уже пройденный экран «отматывает» состояние назад
+	if (messageId !== undefined) await clearTelegramKeyboard(chatId, messageId)
 	const state = getChatState(chatId)
 
 	if (data === 'start') return showLanguage(chatId)
