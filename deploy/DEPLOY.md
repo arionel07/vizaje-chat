@@ -16,24 +16,10 @@ curl -fsSL https://get.docker.com | sh
 
 ## 2. Код на сервере
 
-Через deploy-ключ (SSH, read-only) — надёжнее токена на сервере:
+Репозиторий публичный — клонируем по HTTPS, без ключей:
 
 ```
-ssh-keygen -t ed25519 -C "vps-deploy" -f ~/.ssh/deploy_key -N ""
-cat ~/.ssh/deploy_key.pub
-```
-
-Публичный ключ добавить в GitHub: репозиторий → Settings → Deploy keys → Add
-deploy key (без Write access хватит).
-
-```
-mkdir -p ~/.ssh
-cat >> ~/.ssh/config <<'EOF'
-Host github.com
-  IdentityFile ~/.ssh/deploy_key
-  IdentitiesOnly yes
-EOF
-git clone -b claude/elegant-pascal-i21xym git@github.com:arionel07/vizaje-chat.git /opt/vizaje-chat
+git clone -b claude/elegant-pascal-i21xym https://github.com/arionel07/vizaje-chat.git /opt/vizaje-chat
 cd /opt/vizaje-chat
 ```
 
