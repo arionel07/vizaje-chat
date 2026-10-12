@@ -3,12 +3,14 @@ import { eq } from 'drizzle-orm'
 import { db } from '../src/db/client'
 import { conversations } from '../src/db/schema'
 import {
+	setTelegramFileDownloader,
 	setTelegramKeyboardClearer,
 	setTelegramKeyboardSender,
+	setTelegramPhotoSender,
 	setTelegramSender,
 	type Button
 } from '../src/telegram/service'
-import { api, connectWs, makeAdmin, resetDb } from './helpers'
+import { api, connectWs, makeAdmin, resetDb, TINY_PNG_BASE64 } from './helpers'
 
 let adminToken: string
 
@@ -16,6 +18,9 @@ let adminToken: string
 const texts: { chatId: string; text: string }[] = []
 const keyboards: { chatId: string; text: string; rows: Button[][] }[] = []
 const clearedKeyboards: { chatId: string; messageId: number }[] = []
+const photos: { chatId: string; photoUrl: string; caption?: string }[] = []
+// file_id → содержимое, которое "скачает" подменённый downloadTelegramFile
+const fakeTelegramFiles = new Map<string, { buffer: ArrayBuffer; filePath: string }>()
 
 beforeAll(async () => {
 	await resetDb()
@@ -29,17 +34,38 @@ beforeAll(async () => {
 	setTelegramKeyboardClearer(async (chatId, messageId) => {
 		clearedKeyboards.push({ chatId, messageId })
 	})
+	setTelegramPhotoSender(async (chatId, photoUrl, caption) => {
+		photos.push({ chatId, photoUrl, caption })
+	})
+	setTelegramFileDownloader(async fileId => fakeTelegramFiles.get(fileId) ?? null)
 })
 
 beforeEach(() => {
 	texts.length = 0
 	keyboards.length = 0
 	clearedKeyboards.length = 0
+	photos.length = 0
+	fakeTelegramFiles.clear()
 })
+
+const pngBuffer = () => Uint8Array.from(atob(TINY_PNG_BASE64), c => c.charCodeAt(0)).buffer
+// регистрирует fileId как "скачиваемый" — filePath решает угадываемый mime (см. flow.ts)
+const registerFakeFile = (fileId: string, filePath = 'photos/file.jpg') =>
+	fakeTelegramFiles.set(fileId, { buffer: pngBuffer(), filePath })
 
 const message = (chatId: number, text: string) => ({
 	method: 'POST' as const,
 	body: { message: { chat: { id: chatId }, text } }
+})
+const photoMessage = (chatId: number, fileId: string, caption?: string) => ({
+	method: 'POST' as const,
+	body: { message: { chat: { id: chatId }, photo: [{ file_id: fileId }], caption } }
+})
+const documentMessage = (chatId: number, fileId: string, mimeType: string, caption?: string) => ({
+	method: 'POST' as const,
+	body: {
+		message: { chat: { id: chatId }, document: { file_id: fileId, mime_type: mimeType }, caption }
+	}
 })
 // messageId — id сообщения, под которым была нажата кнопка (для снятия клавиатуры)
 const callback = (
@@ -200,6 +226,108 @@ describe('Telegram-бот: свободный текст после выбора
 		admin.close()
 
 		expect(texts).toContainEqual({ chatId: String(chatId), text: 'ответ оператора' })
+	})
+})
+
+describe('Telegram-бот: фото/картинка — доходит до админа, как и текст', () => {
+	test('фото вне режима поддержки — игнорируется (перезапускает меню, в админку не попадает)', async () => {
+		const chatId = 3001
+		registerFakeFile('f1')
+		await api('/telegram/webhook', photoMessage(chatId, 'f1'))
+
+		expect(await findConversationByChat(chatId)).toBeUndefined()
+		expect(lastKeyboardButtons().map(b => b.data)).toEqual(['start']) // showStart
+	})
+
+	test('фото в режиме поддержки — скачивается, сохраняется, доходит до админа с подписью', async () => {
+		const chatId = 3002
+		const admin = await connectWs(adminToken)
+		await api('/telegram/webhook', callback(chatId, 'start'))
+		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
+		await api('/telegram/webhook', callback(chatId, 'cat:app'))
+
+		registerFakeFile('f2', 'photos/abc.jpg')
+		await api('/telegram/webhook', photoMessage(chatId, 'f2', 'вот скрин ошибки'))
+
+		const got = await admin.waitFor(m => m.attachmentUrl)
+		expect(got).toMatchObject({ sender: 'visitor', text: 'вот скрин ошибки', attachmentType: 'image/jpeg' })
+		expect(got.attachmentUrl).toMatch(/^\/uploads\/[\w-]+\.jpg$/)
+		expect(texts.at(-1)?.text).toMatch(/спасибо/i)
+
+		admin.close()
+	})
+
+	test('картинка-документ (без сжатия) — mime берётся из document.mime_type', async () => {
+		const chatId = 3003
+		const admin = await connectWs(adminToken)
+		await api('/telegram/webhook', callback(chatId, 'start'))
+		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
+		await api('/telegram/webhook', callback(chatId, 'cat:site'))
+
+		registerFakeFile('f3', 'documents/file_42')
+		await api('/telegram/webhook', documentMessage(chatId, 'f3', 'image/png'))
+
+		const got = await admin.waitFor(m => m.attachmentUrl)
+		expect(got).toMatchObject({ attachmentType: 'image/png' })
+
+		admin.close()
+	})
+
+	test('документ не-картинка — не обрабатывается как фото, просто 200', async () => {
+		const chatId = 3004
+		await api('/telegram/webhook', callback(chatId, 'start'))
+		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
+		await api('/telegram/webhook', callback(chatId, 'cat:site'))
+		registerFakeFile('f4', 'documents/report.pdf')
+
+		const res = await api('/telegram/webhook', documentMessage(chatId, 'f4', 'application/pdf'))
+		expect(res.status).toBe(200)
+		expect(await findConversationByChat(chatId)).toBeUndefined()
+	})
+
+	test('скачать файл не удалось — сообщение об ошибке, беседа не заводится', async () => {
+		const chatId = 3005
+		await api('/telegram/webhook', callback(chatId, 'start'))
+		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
+		await api('/telegram/webhook', callback(chatId, 'cat:site'))
+		// не регистрируем f5 — downloadTelegramFile вернёт null
+
+		await api('/telegram/webhook', photoMessage(chatId, 'f5'))
+
+		expect(texts.at(-1)?.text).toMatch(/не удалось загрузить/i)
+		expect(await findConversationByChat(chatId)).toBeUndefined()
+	})
+
+	test('ответ оператора с картинкой — дублируется в Telegram как sendPhoto с публичным URL', async () => {
+		const chatId = 3006
+		const admin = await connectWs(adminToken)
+		await api('/telegram/webhook', callback(chatId, 'start'))
+		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
+		await api('/telegram/webhook', callback(chatId, 'cat:site'))
+		registerFakeFile('f6')
+		await api('/telegram/webhook', photoMessage(chatId, 'f6', 'вопрос с картинкой'))
+		const conversation = await findConversationByChat(chatId)
+
+		// используем уже сохранённый файл посетителя как вложение ответа оператора —
+		// проще, чем поднимать ещё один multipart-запрос; нас интересует сам relay
+		const visitorMsg = await admin.waitFor(m => m.attachmentUrl)
+
+		admin.send({
+			conversationId: conversation!.id,
+			text: 'вот ответ',
+			attachmentUrl: visitorMsg.attachmentUrl,
+			attachmentType: visitorMsg.attachmentType,
+			attachmentSize: visitorMsg.attachmentSize
+		})
+		await admin.waitFor(m => m.type === 'sent')
+
+		const sentPhoto = photos.find(p => p.chatId === String(chatId))
+		expect(sentPhoto).toMatchObject({
+			photoUrl: `http://test-api.local${visitorMsg.attachmentUrl}`,
+			caption: 'вот ответ'
+		})
+
+		admin.close()
 	})
 })
 

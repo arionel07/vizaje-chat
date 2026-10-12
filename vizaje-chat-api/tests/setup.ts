@@ -19,3 +19,5 @@ process.env.JWT_SECRET = 'test-secret'
 // отдельная папка, не "./uploads" из .env — чтобы тестовые файлы не оседали
 // рядом с настоящими загрузками при локальном запуске
 process.env.UPLOAD_DIR = './uploads-test'
+// нужен, чтобы проверять relay картинок в Telegram (sendPhoto требует публичный URL)
+process.env.PUBLIC_API_URL = 'http://test-api.local'

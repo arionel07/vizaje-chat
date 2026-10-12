@@ -40,3 +40,10 @@ export const MAX_UPLOAD_SIZE = Number(process.env.MAX_UPLOAD_SIZE ?? 10 * 1024 *
 // сколько дней хранить вложение, прежде чем удалить файл с диска (само
 // сообщение в истории остаётся, просто без картинки) — см. uploads/cleanup.ts
 export const ATTACHMENT_RETENTION_DAYS = Number(process.env.ATTACHMENT_RETENTION_DAYS ?? 3)
+
+// публичный адрес этого API (https://chat.vizaje-nica.com в проде) — нужен,
+// чтобы собрать абсолютную ссылку на /uploads/... для Telegram sendPhoto
+// (сам Bot API скачивает картинку по URL, относительный путь ему не подходит).
+// Без него ответ оператора с картинкой в Telegram-беседу дублируется без
+// самой картинки, только текстом (если он есть) — см. telegram/service.ts
+export const PUBLIC_API_URL = (process.env.PUBLIC_API_URL || '').replace(/\/$/, '') || null

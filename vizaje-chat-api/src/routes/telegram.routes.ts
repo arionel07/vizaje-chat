@@ -1,12 +1,17 @@
 import { Elysia } from 'elysia'
 import { TELEGRAM_WEBHOOK_SECRET } from '../config'
-import { handleTelegramCallback, handleTelegramText } from '../telegram/flow'
+import { handleTelegramCallback, handleTelegramPhoto, handleTelegramText } from '../telegram/flow'
 
-// апдейт от Telegram: либо обычное сообщение, либо нажатие inline-кнопки
+// апдейт от Telegram: обычное сообщение (текст/фото/картинка-документ) или
+// нажатие inline-кнопки
 type TelegramUpdate = {
 	message?: {
 		chat?: { id?: number | string }
 		text?: string
+		caption?: string
+		// Telegram шлёт несколько размеров одного фото — берём последний (самый крупный)
+		photo?: { file_id: string }[]
+		document?: { file_id: string; mime_type?: string }
 	}
 	callback_query?: {
 		id: string
@@ -42,11 +47,33 @@ export const telegramRoutes = new Elysia().post(
 			return { ok: true }
 		}
 
-		const chatId = update.message?.chat?.id
-		const text = update.message?.text?.trim()
-		// Telegram ждёт 200 даже если апдейт нам неинтересен (стикер, фото и т.п.) —
+		const message = update.message
+		const chatId = message?.chat?.id
+		if (chatId === undefined) return { ok: true }
+
+		// сжатое фото (обычная отправка картинки из галереи) — Telegram не даёт
+		// mime, берём последний (самый крупный) элемент массива размеров
+		const photo = message?.photo
+		if (photo && photo.length > 0) {
+			await handleTelegramPhoto(
+				String(chatId),
+				photo[photo.length - 1]!.file_id,
+				message?.caption,
+				undefined
+			)
+			return { ok: true }
+		}
+		// картинка, отправленная «как файл» (без сжатия) — mime_type есть у документа
+		const document = message?.document
+		if (document?.mime_type?.startsWith('image/')) {
+			await handleTelegramPhoto(String(chatId), document.file_id, message?.caption, document.mime_type)
+			return { ok: true }
+		}
+
+		const text = message?.text?.trim()
+		// Telegram ждёт 200 даже если апдейт нам неинтересен (стикер, не-картинка-документ и т.п.) —
 		// иначе будет слать повторно
-		if (chatId === undefined || !text) return { ok: true }
+		if (!text) return { ok: true }
 
 		await handleTelegramText(String(chatId), text)
 		return { ok: true }

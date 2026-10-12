@@ -13,7 +13,8 @@ import {
 	getOrCreateConversationId,
 	verifySessionToken
 } from '../widget/service'
-import { getConversationChannel, sendTelegramMessage } from '../telegram/service'
+import { getConversationChannel, sendTelegramMessage, sendTelegramPhoto } from '../telegram/service'
+import { PUBLIC_API_URL } from '../config'
 import { sendExpoPush } from '../push-tokens/expo-push'
 import { getAllPushTokens } from '../push-tokens/service'
 import { parseAttachmentInput } from '../uploads/service'
@@ -301,13 +302,27 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			sendAck(ws, msg, clientId)
 
 			// беседа из Telegram — оператор отвечает прямо из админки, без
-			// переключения в сам Telegram; дублируем ответ туда, best-effort.
-			// Вложение в Telegram не дублируется — только текст, если он есть
+			// переключения в сам Telegram; дублируем ответ туда, best-effort
 			const info = await getConversationChannel(conversationId)
-			if (info?.channel === 'telegram' && info.telegramChatId && text) {
-				sendTelegramMessage(info.telegramChatId, text).catch(error =>
-					console.error('Failed to relay reply to Telegram:', error)
-				)
+			if (info?.channel === 'telegram' && info.telegramChatId) {
+				const chatId = info.telegramChatId
+				if (attachment && PUBLIC_API_URL) {
+					// Bot API сам скачивает фото по ссылке — нужен публичный, не relative, URL
+					sendTelegramPhoto(chatId, `${PUBLIC_API_URL}${attachment.url}`, text || undefined).catch(
+						error => console.error('Failed to relay photo to Telegram:', error)
+					)
+				} else {
+					if (attachment && !PUBLIC_API_URL) {
+						console.error(
+							'PUBLIC_API_URL не задан — картинка в Telegram не продублирована, только текст'
+						)
+					}
+					if (text) {
+						sendTelegramMessage(chatId, text).catch(error =>
+							console.error('Failed to relay reply to Telegram:', error)
+						)
+					}
+				}
 			}
 		}
 	},

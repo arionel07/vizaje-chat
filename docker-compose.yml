@@ -27,6 +27,9 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       UPLOAD_DIR: /app/uploads
+      # тот же адрес, что ADMIN_API_URL ниже (публичный URL этого API) —
+      # нужен, чтобы Telegram sendPhoto мог скачать картинку по ссылке
+      PUBLIC_API_URL: ${ADMIN_API_URL}
     volumes:
       - uploads_data:/app/uploads
     depends_on:

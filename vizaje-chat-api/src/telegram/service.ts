@@ -136,6 +136,67 @@ export async function getConversationChannel(conversationId: number) {
 	return row ?? null
 }
 
+type PhotoSender = (chatId: string, photoUrl: string, caption?: string) => Promise<unknown>
+
+// отправка картинки в Telegram по публичной ссылке (сам Bot API её скачивает) —
+// используется, когда оператор отвечает с вложением (см. ws.routes.ts).
+// Нужен PUBLIC_API_URL, иначе Telegram не сможет достучаться до нашего /uploads/...
+let photoSender: PhotoSender = async (chatId, photoUrl, caption) => {
+	if (!TELEGRAM_BOT_TOKEN) return
+	const res = await fetch(
+		`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,
+		{
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ chat_id: chatId, photo: photoUrl, caption })
+		}
+	)
+	if (!res.ok) {
+		console.error('Telegram sendPhoto failed:', res.status, await res.text().catch(() => ''))
+	}
+}
+
+export function setTelegramPhotoSender(fn: PhotoSender) {
+	photoSender = fn
+}
+
+export async function sendTelegramPhoto(chatId: string, photoUrl: string, caption?: string) {
+	await photoSender(chatId, photoUrl, caption)
+}
+
+type FileDownloader = (
+	fileId: string
+) => Promise<{ buffer: ArrayBuffer; filePath: string } | null>
+
+// скачивает файл, который посетитель прислал боту (фото/документ-картинка) —
+// двухшаговый Bot API: getFile даёт file_path, затем обычный GET по нему.
+// filePath нужен вызывающему коду, чтобы угадать расширение/mime (см. flow.ts)
+let fileDownloader: FileDownloader = async fileId => {
+	if (!TELEGRAM_BOT_TOKEN) return null
+	const infoRes = await fetch(
+		`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`
+	)
+	if (!infoRes.ok) {
+		console.error('Telegram getFile failed:', infoRes.status, await infoRes.text().catch(() => ''))
+		return null
+	}
+	const info = (await infoRes.json()) as { ok: boolean; result?: { file_path?: string } }
+	const filePath = info.result?.file_path
+	if (!info.ok || !filePath) return null
+
+	const fileRes = await fetch(`https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${filePath}`)
+	if (!fileRes.ok) return null
+	return { buffer: await fileRes.arrayBuffer(), filePath }
+}
+
+export function setTelegramFileDownloader(fn: FileDownloader) {
+	fileDownloader = fn
+}
+
+export async function downloadTelegramFile(fileId: string) {
+	return fileDownloader(fileId)
+}
+
 // идемпотентно: один chatId — одна беседа, при повторном сообщении находим ту же
 // (тот же приём, что и getOrCreateConversationId у виджета, см. widget/service.ts)
 export async function getOrCreateConversationForChat(chatId: string) {
