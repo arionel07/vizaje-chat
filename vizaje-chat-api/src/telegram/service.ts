@@ -37,6 +37,62 @@ export async function sendTelegramMessage(chatId: string, text: string) {
 	await sender(chatId, text)
 }
 
+export type Button = { text: string; data: string }
+
+type KeyboardSender = (chatId: string, text: string, rows: Button[][]) => Promise<unknown>
+
+let keyboardSender: KeyboardSender = async (chatId, text, rows) => {
+	if (!TELEGRAM_BOT_TOKEN) {
+		console.error('TELEGRAM_BOT_TOKEN не задан — сообщение в Telegram не отправлено')
+		return
+	}
+	const res = await fetch(
+		`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+		{
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				chat_id: chatId,
+				text,
+				reply_markup: {
+					inline_keyboard: rows.map(row =>
+						row.map(b => ({ text: b.text, callback_data: b.data }))
+					)
+				}
+			})
+		}
+	)
+	if (!res.ok) {
+		console.error(
+			'Telegram sendMessage (keyboard) failed:',
+			res.status,
+			await res.text().catch(() => '')
+		)
+	}
+}
+
+export function setTelegramKeyboardSender(fn: KeyboardSender) {
+	keyboardSender = fn
+}
+
+// меню — каждая строка rows[] своя строка кнопок под сообщением
+export async function sendTelegramButtons(chatId: string, text: string, rows: Button[][]) {
+	await keyboardSender(chatId, text, rows)
+}
+
+// без этого кнопка в Telegram-клиенте продолжает «крутиться» после нажатия
+export async function answerTelegramCallback(callbackQueryId: string) {
+	if (!TELEGRAM_BOT_TOKEN) return
+	await fetch(
+		`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`,
+		{
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ callback_query_id: callbackQueryId })
+		}
+	).catch(error => console.error('answerCallbackQuery failed:', error))
+}
+
 // беседа + chatId → { channel, telegramChatId } — чтобы при ответе оператора
 // понять, нужно ли дублировать сообщение в Telegram (см. ws.routes.ts)
 export async function getConversationChannel(conversationId: number) {

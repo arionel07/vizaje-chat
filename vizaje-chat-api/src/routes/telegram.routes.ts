@@ -1,15 +1,17 @@
 import { Elysia } from 'elysia'
 import { TELEGRAM_WEBHOOK_SECRET } from '../config'
-import { addMessage } from '../chat/service'
-import { publishMessage } from '../chat/events'
-import { allowVisitorMessage } from '../chat/rate-limit'
-import { getOrCreateConversationForChat } from '../telegram/service'
+import { handleTelegramCallback, handleTelegramText } from '../telegram/flow'
 
-// апдейт от Telegram: нас интересует только обычное текстовое сообщение
+// апдейт от Telegram: либо обычное сообщение, либо нажатие inline-кнопки
 type TelegramUpdate = {
 	message?: {
 		chat?: { id?: number | string }
 		text?: string
+	}
+	callback_query?: {
+		id: string
+		data?: string
+		message?: { chat?: { id?: number | string } }
 	}
 }
 
@@ -27,17 +29,21 @@ export const telegramRoutes = new Elysia().post(
 		}
 
 		const update = body as TelegramUpdate
+
+		const callback = update.callback_query
+		const callbackChatId = callback?.message?.chat?.id
+		if (callback && callbackChatId !== undefined && callback.data) {
+			await handleTelegramCallback(String(callbackChatId), callback.data, callback.id)
+			return { ok: true }
+		}
+
 		const chatId = update.message?.chat?.id
 		const text = update.message?.text?.trim()
-		// Telegram ждёt 200 даже если апдейт нам неинтересен (стикер, фото, /start
-		// без текста и т.п.) — иначе будет слать повторно
+		// Telegram ждёт 200 даже если апдейт нам неинтересен (стикер, фото и т.п.) —
+		// иначе будет слать повторно
 		if (chatId === undefined || !text) return { ok: true }
 
-		const conversationId = await getOrCreateConversationForChat(String(chatId))
-		if (!allowVisitorMessage(conversationId)) return { ok: true }
-
-		const msg = await addMessage(conversationId, 'visitor', text)
-		publishMessage(conversationId, msg)
+		await handleTelegramText(String(chatId), text)
 		return { ok: true }
 	}
 )
