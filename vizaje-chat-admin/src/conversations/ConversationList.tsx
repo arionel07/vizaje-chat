@@ -5,6 +5,7 @@ import {
 	LogOut,
 	MessageSquare,
 	Search,
+	Send,
 	Settings,
 	User,
 	X
@@ -38,6 +39,7 @@ function conversationStub(id: number): Conversation {
 	return {
 		id,
 		sessionId: '',
+		channel: 'widget',
 		status: 'open',
 		createdAt: new Date().toISOString(),
 		visitorLastReadAt: null,
@@ -465,6 +467,12 @@ export function ConversationList({
 												}`}
 											>
 												<span className="truncate">Беседа #{c.id}</span>
+												{c.channel === 'telegram' && (
+													<Send
+														aria-label="Telegram"
+														className="h-3.5 w-3.5 shrink-0 text-sky-500"
+													/>
+												)}
 												{c.status === 'closed' && (
 													<Lock
 														aria-label="Закрыта"

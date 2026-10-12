@@ -13,6 +13,7 @@ import {
 	getOrCreateConversationId,
 	verifySessionToken
 } from '../widget/service'
+import { getConversationChannel, sendTelegramMessage } from '../telegram/service'
 import { sendExpoPush } from '../push-tokens/expo-push'
 import { getAllPushTokens } from '../push-tokens/service'
 
@@ -287,6 +288,15 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			ws.publish(`conversation:${conversationId}`, payload)
 			ws.publish('admin:global', payload)
 			sendAck(ws, msg, clientId)
+
+			// беседа из Telegram — оператор отвечает прямо из админки, без
+			// переключения в сам Telegram; дублируем ответ туда, best-effort
+			const info = await getConversationChannel(conversationId)
+			if (info?.channel === 'telegram' && info.telegramChatId) {
+				sendTelegramMessage(info.telegramChatId, text).catch(error =>
+					console.error('Failed to relay reply to Telegram:', error)
+				)
+			}
 		}
 	},
 	close(ws) {

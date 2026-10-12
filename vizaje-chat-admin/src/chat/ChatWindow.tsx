@@ -492,8 +492,14 @@ export function ChatWindow({
 					<User aria-hidden="true" className="h-5 w-5" />
 				</span>
 				<div className="min-w-0 flex-1">
-					<h2 className="truncate text-base font-semibold leading-tight">
-						Беседа #{conversationId}
+					<h2 className="flex items-center gap-1.5 truncate text-base font-semibold leading-tight">
+						<span className="truncate">Беседа #{conversationId}</span>
+						{conversation.channel === 'telegram' && (
+							<Send
+								aria-label="Telegram"
+								className="h-3.5 w-3.5 shrink-0 text-sky-500"
+							/>
+						)}
 					</h2>
 					<p className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
 						<span
@@ -503,6 +509,7 @@ export function ChatWindow({
 							}`}
 						/>
 						{closed ? 'Закрыта' : 'Открыта'}
+						{conversation.channel === 'telegram' && ' · Telegram'}
 					</p>
 				</div>
 				<select

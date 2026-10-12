@@ -8,6 +8,7 @@ import { cannedResponsesRoutes } from './routes/canned-responses.routes'
 import { conversationsRoutes } from './routes/conversations.routes'
 import { pushTokensRoutes } from './routes/push-tokens.routes'
 import { settingsRoutes } from './routes/settings.routes'
+import { telegramRoutes } from './routes/telegram.routes'
 import { widgetRoutes } from './routes/widget.routes'
 import { wsRoutes } from './routes/ws.routes'
 
@@ -26,6 +27,7 @@ export function createApp() {
 		.get('/health', () => ({ status: 'ok' }))
 		.use(authRoutes)
 		.use(widgetRoutes)
+		.use(telegramRoutes)
 		.use(conversationsRoutes)
 		.use(pushTokensRoutes)
 		.use(settingsRoutes)

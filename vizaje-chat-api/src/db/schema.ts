@@ -22,9 +22,20 @@ export const conversationStatus = pgEnum('conversation_status', [
 	'closed'
 ])
 
+// канал, которым посетитель пишет — влияет только на то, откуда взялось
+// sessionId и куда дублировать ответ оператора (см. telegram/service.ts)
+export const conversationChannel = pgEnum('conversation_channel', [
+	'widget',
+	'telegram'
+])
+
 export const conversations = pgTable('conversations', {
 	id: serial('id').primaryKey(),
-	sessionId: text('session_id').notNull().unique(), // анонимный ID посетителя с сайта
+	// анонимный ID посетителя: для widget — UUID сессии, для telegram — `telegram:<chatId>`
+	sessionId: text('session_id').notNull().unique(),
+	channel: conversationChannel('channel').default('widget').notNull(),
+	// только для channel='telegram' — куда слать ответ оператора через Bot API
+	telegramChatId: text('telegram_chat_id'),
 	status: conversationStatus('status').default('open').notNull(),
 	// когда оператор в последний раз открывал беседу; от него считаются непрочитанные
 	adminLastReadAt: timestamp('admin_last_read_at'),

@@ -24,3 +24,11 @@ export const TRUST_PROXY = process.env.TRUST_PROXY === 'true'
 
 // порт HTTP/WS сервера
 export const PORT = Number(process.env.PORT ?? 3001)
+
+// Telegram-бот — опциональный канал; без токена /telegram/webhook просто
+// не сможет ничего отправить обратно (входящие всё равно примет и сохранит)
+export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || null
+// секрет, который Telegram присылает в заголовке X-Telegram-Bot-Api-Secret-Token
+// (задаётся при регистрации вебхука) — без него /telegram/webhook принимает
+// запросы от кого угодно, кто узнает URL
+export const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || null

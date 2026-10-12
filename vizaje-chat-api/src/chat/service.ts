@@ -205,6 +205,7 @@ export async function getConversations({
 		.select({
 			id: conversations.id,
 			sessionId: conversations.sessionId,
+			channel: conversations.channel,
 			status: conversations.status,
 			createdAt: conversations.createdAt,
 			visitorLastReadAt: conversations.visitorLastReadAt,

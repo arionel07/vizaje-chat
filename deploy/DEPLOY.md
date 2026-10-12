@@ -68,6 +68,25 @@ curl https://chat.vizaje-nica.com/health
 
 Открыть `https://admin.vizaje-nica.com` в браузере.
 
+## 8. Telegram-бот (необязательно)
+
+Токен от @BotFather — в `.env` как `TELEGRAM_BOT_TOKEN`. Секрет для вебхука —
+любая случайная строка (`openssl rand -hex 24`), тоже в `.env` как
+`TELEGRAM_WEBHOOK_SECRET`. После `docker compose up -d --build api`
+зарегистрировать вебхук (один раз, с машины, где есть токен — можно прямо
+на сервере):
+
+```
+curl -X POST "https://api.telegram.org/bot<ТОКЕН>/setWebhook" \
+  -d "url=https://chat.vizaje-nica.com/telegram/webhook" \
+  -d "secret_token=<ТОТ ЖЕ TELEGRAM_WEBHOOK_SECRET>"
+```
+
+Проверка: `curl "https://api.telegram.org/bot<ТОКЕН>/getWebhookInfo"` —
+`url` должен совпадать, `last_error_message` — пустой. Написать боту в
+Telegram — сообщение должно появиться в админке с пометкой Telegram;
+ответ оператора из админки должен прийти в тот же чат.
+
 ## Обновление после новых коммитов
 
 ```
