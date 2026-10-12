@@ -1,5 +1,9 @@
 # Деплой на VPS (Docker Compose)
 
+> Весь функционал сейчас в ветке `claude/elegant-pascal-i21xym` (PR #1,
+> не смёржен в `main`) — клонировать и обновлять нужно именно её, пока PR
+> не смёржен.
+
 Схема: `chat.<домен>` — API + статика виджета (widget.js, /public/*) + WebSocket.
 `admin.<домен>` — админка (SPA). Оба за Cloudflare (proxied), TLS до origin —
 через Cloudflare Origin Certificate.
@@ -29,7 +33,7 @@ Host github.com
   IdentityFile ~/.ssh/deploy_key
   IdentitiesOnly yes
 EOF
-git clone git@github.com:arionel07/vizaje-chat.git /opt/vizaje-chat
+git clone -b claude/elegant-pascal-i21xym git@github.com:arionel07/vizaje-chat.git /opt/vizaje-chat
 cd /opt/vizaje-chat
 ```
 
