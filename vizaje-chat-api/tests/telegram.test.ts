@@ -66,6 +66,7 @@ describe('Telegram-бот: навигация по меню (ничего не �
 			'cat:retail',
 			'cat:app',
 			'cat:site',
+			'cat:other',
 			'back'
 		])
 
@@ -93,8 +94,21 @@ describe('Telegram-бот: навигация по меню (ничего не �
 			'cat:retail',
 			'cat:app',
 			'cat:site',
+			'cat:other',
 			'back'
 		])
+	})
+
+	test('категория «Другое» — без FAQ, сразу просит написать вопрос', async () => {
+		const chatId = 1004
+		await api('/telegram/webhook', callback(chatId, 'start'))
+		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
+		await api('/telegram/webhook', callback(chatId, 'cat:other'))
+
+		// меню (кнопки) после этого больше не показывается — сразу просьба написать текстом
+		expect(keyboards).toHaveLength(2) // start + lang/категории, FAQ-клавиатуры не было
+		expect(texts.at(-1)?.text).toMatch(/напишите ваш вопрос/i)
+		expect(await findConversationByChat(chatId)).toBeUndefined()
 	})
 })
 
@@ -116,6 +130,24 @@ describe('Telegram-бот: «другой вопрос» — единствен�
 		const conversation = await findConversationByChat(chatId)
 		expect(conversation).toMatchObject({ channel: 'telegram', telegramChatId: String(chatId) })
 		expect(got.conversationId).toBe(conversation!.id)
+		// сразу после — благодарность на языке, который выбрал посетитель
+		expect(texts.at(-1)?.text).toMatch(/спасибо/i)
+
+		admin.close()
+	})
+
+	test('категория «Другое»: вопрос тоже доходит до админа и приходит благодарность', async () => {
+		const chatId = 2004
+		const admin = await connectWs(adminToken)
+
+		await api('/telegram/webhook', callback(chatId, 'start'))
+		await api('/telegram/webhook', callback(chatId, 'lang:ro'))
+		await api('/telegram/webhook', callback(chatId, 'cat:other'))
+		await api('/telegram/webhook', message(chatId, 'altceva, nu se potrivește'))
+
+		const got = await admin.waitFor(m => m.text === 'altceva, nu se potrivește')
+		expect(got).toMatchObject({ sender: 'visitor' })
+		expect(texts.at(-1)?.text).toMatch(/mulțumim/i) // благодарность на румынском
 
 		admin.close()
 	})

@@ -2,7 +2,8 @@
 // Добавить/поменять вопрос — поменять строку здесь, код трогать не нужно.
 
 export type Lang = 'ru' | 'ro'
-export type CategoryId = 'retail' | 'app' | 'site'
+// 'other' — категория без своего FAQ: сразу просит написать вопрос (см. flow.ts)
+export type CategoryId = 'retail' | 'app' | 'site' | 'other'
 
 export const GREETING =
 	'Здравствуйте! 👋 Я бот поддержки Vizaje-Nica.\nВыберите язык:'
@@ -10,10 +11,12 @@ export const GREETING =
 export const CATEGORY_LABELS: Record<CategoryId, Record<Lang, string>> = {
 	retail: { ru: 'Розница', ro: 'Cu amănuntul' },
 	app: { ru: 'Приложение', ro: 'Aplicație' },
-	site: { ru: 'Сайт', ro: 'Site' }
+	site: { ru: 'Сайт', ro: 'Site' },
+	other: { ru: 'Другое', ro: 'Altele' }
 }
 
-// заглушки — замените на реальные вопросы/ответы, формат тот же (вопрос: ответ)
+// заглушки — замените на реальные вопросы/ответы, формат тот же (вопрос: ответ).
+// У 'other' своего списка нет — пропускается (см. CATEGORIES_WITHOUT_FAQ в flow.ts)
 export const FAQ: Record<CategoryId, Record<Lang, Record<string, string>>> = {
 	retail: {
 		ru: {
@@ -44,7 +47,8 @@ export const FAQ: Record<CategoryId, Record<Lang, Record<string, string>>> = {
 			'Pagina nu se încarcă': 'Încercați să ștergeți cache-ul browserului sau deschideți în alt browser.',
 			'Unde văd statusul comenzii?': 'În contul personal → „Comenzile mele"'
 		}
-	}
+	},
+	other: { ru: {}, ro: {} }
 }
 
 export const BACK_LABEL: Record<Lang, string> = { ru: '⬅️ Назад', ro: '⬅️ Înapoi' }

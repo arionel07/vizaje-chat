@@ -21,7 +21,10 @@ import {
 } from './service'
 import { getChatState, setChatState } from './state'
 
-const CATEGORY_IDS: CategoryId[] = ['retail', 'app', 'site']
+const CATEGORY_IDS: CategoryId[] = ['retail', 'app', 'site', 'other']
+// у 'other' нет своего FAQ — после выбора сразу просим написать вопрос,
+// а не показываем пустой список с одной лишь кнопкой «Другой вопрос»
+const CATEGORIES_WITHOUT_FAQ: CategoryId[] = ['other']
 
 const withBack = (lang: Lang, rows: Button[][]): Button[][] => [
 	...rows,
@@ -110,7 +113,12 @@ export async function handleTelegramCallback(
 	}
 
 	if (data.startsWith('cat:')) {
-		return showFaq(chatId, state.lang ?? 'ru', data.slice(4) as CategoryId)
+		const categoryId = data.slice(4) as CategoryId
+		const lang = state.lang ?? 'ru'
+		if (CATEGORIES_WITHOUT_FAQ.includes(categoryId)) {
+			return promptFreeText(chatId, lang, categoryId)
+		}
+		return showFaq(chatId, lang, categoryId)
 	}
 
 	if (data.startsWith('faq:')) {
