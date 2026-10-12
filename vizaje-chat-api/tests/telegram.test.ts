@@ -73,7 +73,7 @@ describe('Telegram-бот: навигация по меню (ничего не �
 		expect(await findConversationByChat(1001)).toBeUndefined()
 	})
 
-	test('Start → язык → категория → FAQ-ответ — ни разу не создаёт беседу', async () => {
+	test('Start → язык → категория — сразу просьба написать вопрос, беседу не заводит', async () => {
 		const chatId = 1002
 		await api('/telegram/webhook', callback(chatId, 'start'))
 		expect(lastKeyboardButtons().map(b => b.data)).toEqual(['lang:ru', 'lang:ro'])
@@ -88,14 +88,8 @@ describe('Telegram-бот: навигация по меню (ничего не �
 		])
 
 		await api('/telegram/webhook', callback(chatId, 'cat:retail'))
-		const faqButtons = lastKeyboardButtons()
-		expect(faqButtons.at(-2)?.data).toBe('other:retail') // предпоследняя — «другой вопрос»
-		expect(faqButtons.at(-1)?.data).toBe('back')
-
-		// нажали на готовый вопрос — бот отвечает текстом, меню показывается снова
-		const faqButtonData = faqButtons[0]!.data
-		await api('/telegram/webhook', callback(chatId, faqButtonData))
-		expect(texts).toHaveLength(1) // готовый ответ ушёл как обычный текст
+		expect(lastKeyboardButtons().map(b => b.data)).toEqual(['back']) // только кнопка назад
+		expect(texts).toHaveLength(0) // никакого готового ответа — просим написать своими словами
 
 		expect(await findConversationByChat(chatId)).toBeUndefined()
 	})
@@ -106,7 +100,7 @@ describe('Telegram-бот: навигация по меню (ничего не �
 		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
 		await api('/telegram/webhook', callback(chatId, 'cat:retail'))
 		await api('/telegram/webhook', callback(chatId, 'back'))
-		// назад из FAQ — снова категории
+		// назад из режима «напишите вопрос» — снова категории
 		expect(lastKeyboardButtons().map(b => b.data)).toEqual([
 			'cat:retail',
 			'cat:app',
@@ -126,28 +120,26 @@ describe('Telegram-бот: навигация по меню (ничего не �
 		expect(clearedKeyboards).toHaveLength(2)
 	})
 
-	test('категория «Другое» — без FAQ, сразу просит написать вопрос', async () => {
+	test('категория «Другое» ведёт себя так же — сразу просит написать вопрос', async () => {
 		const chatId = 1004
 		await api('/telegram/webhook', callback(chatId, 'start'))
 		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
 		await api('/telegram/webhook', callback(chatId, 'cat:other'))
 
-		// меню (кнопки) после этого больше не показывается — сразу просьба написать текстом
-		expect(keyboards).toHaveLength(2) // start + lang/категории, FAQ-клавиатуры не было
-		expect(texts.at(-1)?.text).toMatch(/напишите ваш вопрос/i)
+		expect(keyboards).toHaveLength(3) // start + lang/категории + просьба написать (с кнопкой назад)
+		expect(keyboards.at(-1)?.text).toMatch(/опишите вашу проблему/i)
 		expect(await findConversationByChat(chatId)).toBeUndefined()
 	})
 })
 
-describe('Telegram-бот: «другой вопрос» — единственный путь в админку', () => {
-	test('после «Другой вопрос» свободный текст заводит беседу и приходит админу', async () => {
+describe('Telegram-бот: свободный текст после выбора категории — единственный путь в админку', () => {
+	test('после выбора категории свободный текст заводит беседу и приходит админу', async () => {
 		const chatId = 2001
 		const admin = await connectWs(adminToken)
 
 		await api('/telegram/webhook', callback(chatId, 'start'))
 		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
 		await api('/telegram/webhook', callback(chatId, 'cat:app'))
-		await api('/telegram/webhook', callback(chatId, 'other:app'))
 		expect(await findConversationByChat(chatId)).toBeUndefined() // всё ещё нет беседы
 
 		await api('/telegram/webhook', message(chatId, 'у меня завис экран'))
@@ -184,7 +176,6 @@ describe('Telegram-бот: «другой вопрос» — единствен�
 		await api('/telegram/webhook', callback(chatId, 'start'))
 		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
 		await api('/telegram/webhook', callback(chatId, 'cat:site'))
-		await api('/telegram/webhook', callback(chatId, 'other:site'))
 		await api('/telegram/webhook', message(chatId, 'первое'))
 		await api('/telegram/webhook', message(chatId, 'второе'))
 
@@ -200,7 +191,6 @@ describe('Telegram-бот: «другой вопрос» — единствен�
 		await api('/telegram/webhook', callback(chatId, 'start'))
 		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
 		await api('/telegram/webhook', callback(chatId, 'cat:retail'))
-		await api('/telegram/webhook', callback(chatId, 'other:retail'))
 		await api('/telegram/webhook', message(chatId, 'вопрос из телеграма'))
 		const conversation = await findConversationByChat(chatId)
 

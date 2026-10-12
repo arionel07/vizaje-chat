@@ -5,9 +5,7 @@ import {
 	ASK_TEXT_PROMPT,
 	BACK_LABEL,
 	CATEGORY_LABELS,
-	FAQ,
 	GREETING,
-	OTHER_QUESTION_LABEL,
 	THANKS_FORWARDED,
 	type CategoryId,
 	type Lang
@@ -23,9 +21,6 @@ import {
 import { getChatState, setChatState } from './state'
 
 const CATEGORY_IDS: CategoryId[] = ['retail', 'app', 'site', 'other']
-// у 'other' нет своего FAQ — после выбора сразу просим написать вопрос,
-// а не показываем пустой список с одной лишь кнопкой «Другой вопрос»
-const CATEGORIES_WITHOUT_FAQ: CategoryId[] = ['other']
 
 const withBack = (lang: Lang, rows: Button[][]): Button[][] => [
 	...rows,
@@ -61,19 +56,9 @@ async function showCategories(chatId: string, lang: Lang) {
 	)
 }
 
-async function showFaq(chatId: string, lang: Lang, categoryId: CategoryId) {
-	setChatState(chatId, { step: 'faq', lang, categoryId })
-	const questions = Object.keys(FAQ[categoryId][lang])
-	const rows: Button[][] = questions.map((q, i) => [
-		{ text: q, data: `faq:${categoryId}:${i}` }
-	])
-	rows.push([{ text: OTHER_QUESTION_LABEL[lang], data: `other:${categoryId}` }])
-	await sendTelegramButtons(chatId, CATEGORY_LABELS[categoryId][lang], withBack(lang, rows))
-}
-
 async function promptFreeText(chatId: string, lang: Lang, categoryId: CategoryId) {
 	setChatState(chatId, { step: 'support', lang, categoryId })
-	await sendTelegramMessage(chatId, ASK_TEXT_PROMPT[lang])
+	await sendTelegramButtons(chatId, ASK_TEXT_PROMPT[lang], withBack(lang, []))
 }
 
 // единственное место во всём меню, где заводится беседа в нашей БД —
@@ -119,27 +104,11 @@ export async function handleTelegramCallback(
 
 	if (data.startsWith('cat:')) {
 		const categoryId = data.slice(4) as CategoryId
-		const lang = state.lang ?? 'ru'
-		if (CATEGORIES_WITHOUT_FAQ.includes(categoryId)) {
-			return promptFreeText(chatId, lang, categoryId)
-		}
-		return showFaq(chatId, lang, categoryId)
-	}
-
-	if (data.startsWith('faq:')) {
-		const [, categoryId, indexStr] = data.split(':') as [string, CategoryId, string]
-		const lang = state.lang ?? 'ru'
-		const entry = Object.entries(FAQ[categoryId][lang])[Number(indexStr)]
-		if (entry) await sendTelegramMessage(chatId, entry[1])
-		return showFaq(chatId, lang, categoryId)
-	}
-
-	if (data.startsWith('other:')) {
-		return promptFreeText(chatId, state.lang ?? 'ru', data.slice(6) as CategoryId)
+		return promptFreeText(chatId, state.lang ?? 'ru', categoryId)
 	}
 
 	if (data === 'back') {
-		if (state.step === 'faq' && state.lang) return showCategories(chatId, state.lang)
+		if (state.step === 'support' && state.lang) return showCategories(chatId, state.lang)
 		if (state.step === 'category') return showLanguage(chatId)
 		return showStart(chatId)
 	}
