@@ -6,6 +6,7 @@ import {
 	Lock,
 	MessageSquareText,
 	Mic,
+	Paperclip,
 	Reply,
 	RotateCcw,
 	Send,
@@ -26,10 +27,13 @@ import {
 	MESSAGES_PAGE_SIZE,
 	updateAssignee,
 	updateStatus,
+	uploadAttachment,
 	type CannedResponse,
 	type Conversation,
-	type Operator
+	type Operator,
+	type UploadedAttachment
 } from '../lib/api'
+import { API_URL } from '../lib/config'
 import { formatTime } from '../lib/format'
 import { connectAdminWs, type AdminWs } from '../lib/ws'
 import { CannedResponsesPanel } from './CannedResponsesPanel'
@@ -50,6 +54,8 @@ type Message = {
 	clientId?: string // только для отправленных отсюда сообщений
 	pending?: boolean // отправлено, серверное подтверждение (sent) ещё не пришло
 	failed?: boolean // сервер отклонил сообщение
+	attachmentUrl?: string | null
+	attachmentName?: string | null
 }
 
 const NEAR_BOTTOM_PX = 150
@@ -58,6 +64,8 @@ const TYPING_SHOW_MS = 5000 // «печатает» гаснет, если со�
 const LONG_PRESS_MS = 450 // долгое нажатие на сообщение (телефон) — ответить
 const QUOTE_LENGTH = 200
 const MAX_SEARCH_PAGES = 10 // сколько страниц истории подгружать в поисках исходного сообщения
+const ALLOWED_ATTACHMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif']
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
 
 const authorLabel = (sender: string) =>
 	sender === 'admin' ? 'Вы' : sender === 'bot' ? 'Бот' : 'Посетитель'
@@ -99,6 +107,12 @@ export function ChatWindow({
 	const [replyTarget, setReplyTarget] = useState<ReplyTo | null>(null)
 	const [emojiOpen, setEmojiOpen] = useState(false)
 	const [cannedOpen, setCannedOpen] = useState(false)
+	const [pendingAttachment, setPendingAttachment] = useState<UploadedAttachment | null>(null)
+	const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null)
+	const [uploadingAttachment, setUploadingAttachment] = useState(false)
+	const [attachmentError, setAttachmentError] = useState<string | null>(null)
+	const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+	const fileInputRef = useRef<HTMLInputElement | null>(null)
 	const [flashId, setFlashId] = useState<number | null>(null)
 	const flashTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const pressRef = useRef<{ timer?: ReturnType<typeof setTimeout>; x: number; y: number }>({
@@ -410,16 +424,67 @@ export function ChatWindow({
 		return null
 	}, [messages, conversation.visitorLastReadAt, readEventAt])
 
+	function clearAttachment() {
+		setPendingAttachment(null)
+		setUploadingAttachment(false)
+		setAttachmentPreviewUrl(prev => {
+			if (prev) URL.revokeObjectURL(prev)
+			return null
+		})
+		if (fileInputRef.current) fileInputRef.current.value = ''
+	}
+
+	async function handleFileSelect(file: File | undefined) {
+		if (!file) return
+		setAttachmentError(null)
+		if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
+			setAttachmentError('Поддерживаются только картинки: JPEG, PNG, WEBP, AVIF.')
+			if (fileInputRef.current) fileInputRef.current.value = ''
+			return
+		}
+		if (file.size > MAX_ATTACHMENT_SIZE) {
+			setAttachmentError('Файл слишком большой — максимум 10MB.')
+			if (fileInputRef.current) fileInputRef.current.value = ''
+			return
+		}
+
+		setAttachmentPreviewUrl(URL.createObjectURL(file))
+		setUploadingAttachment(true)
+		try {
+			const uploaded = await uploadAttachment(token, file)
+			setPendingAttachment(uploaded)
+		} catch (e) {
+			setAttachmentError(e instanceof Error ? e.message : 'Не удалось загрузить файл')
+			clearAttachment()
+		} finally {
+			setUploadingAttachment(false)
+		}
+	}
+
 	function sendMessage() {
 		const text = input.trim()
-		if (!text || !wsRef.current) return
+		if ((!text && !pendingAttachment) || !wsRef.current || uploadingAttachment) return
 		// нет соединения — не теряем текст и не рисуем «отправленное» сообщение
 		const clientId = `${Date.now().toString(36)}-${++sendSeqRef.current}`
 		dictation.abort()
 		const replyToId = replyTarget?.id
+		const attachment = pendingAttachment
 		if (
 			!wsRef.current.send(
-				JSON.stringify({ conversationId, text, clientId, ...(replyToId ? { replyToId } : {}) })
+				JSON.stringify({
+					conversationId,
+					text,
+					clientId,
+					...(replyToId ? { replyToId } : {}),
+					...(attachment
+						? {
+								attachmentUrl: attachment.url,
+								attachmentType: attachment.type,
+								attachmentName: attachment.name,
+								attachmentSize: attachment.size
+							}
+						: {})
+				})
 			)
 		)
 			return
@@ -433,11 +498,14 @@ export function ChatWindow({
 				createdAt: new Date().toISOString(),
 				clientId,
 				pending: true,
-				replyTo: replyTarget
+				replyTo: replyTarget,
+				attachmentUrl: attachment?.url,
+				attachmentName: attachment?.name
 			}
 		]) // optimistic: id и время заменит подтверждение sent
 		setReplyTarget(null)
 		setInput('')
+		clearAttachment()
 		onActivityRef.current?.()
 	}
 
@@ -663,6 +731,15 @@ export function ChatWindow({
 												</span>
 											</button>
 										)}
+										{m.attachmentUrl && (
+											<img
+												src={`${API_URL}${m.attachmentUrl}`}
+												alt={m.attachmentName ?? ''}
+												loading="lazy"
+												onClick={() => setLightboxUrl(`${API_URL}${m.attachmentUrl}`)}
+												className={`block max-h-56 max-w-56 cursor-zoom-in rounded-xl object-cover ${m.text ? 'mb-1.5' : ''}`}
+											/>
+										)}
 										{m.text}
 									</div>
 									{!m.pending && !m.failed && (
@@ -746,6 +823,39 @@ export function ChatWindow({
 				</div>
 			)}
 
+			{attachmentError && (
+				<div
+					role="status"
+					className="border-t border-zinc-200 bg-zinc-50 px-4 py-1.5 text-center text-xs text-red-600 dark:border-zinc-800 dark:bg-zinc-800/50 dark:text-red-400"
+				>
+					{attachmentError}
+				</div>
+			)}
+			{attachmentPreviewUrl && (
+				<div className="flex items-center gap-2 border-t border-zinc-200 px-4 py-2 dark:border-zinc-800">
+					<div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-800">
+						<img
+							src={attachmentPreviewUrl}
+							alt=""
+							className={`h-full w-full object-cover ${uploadingAttachment ? 'opacity-40' : ''}`}
+						/>
+						{uploadingAttachment && (
+							<span className="absolute inset-0 flex items-center justify-center">
+								<span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-700 dark:border-zinc-600 dark:border-t-zinc-200" />
+							</span>
+						)}
+					</div>
+					<button
+						type="button"
+						onClick={clearAttachment}
+						aria-label="Убрать файл"
+						className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
+					>
+						<X aria-hidden="true" className="h-4 w-4" />
+					</button>
+				</div>
+			)}
+
 			<form
 				onSubmit={e => {
 					e.preventDefault()
@@ -768,6 +878,22 @@ export function ChatWindow({
 				>
 					<Smile aria-hidden="true" className="h-5 w-5" />
 				</button>
+				<button
+					type="button"
+					onClick={() => fileInputRef.current?.click()}
+					aria-label="Прикрепить изображение"
+					title="Прикрепить изображение"
+					className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 bg-transparent text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-300/30"
+				>
+					<Paperclip aria-hidden="true" className="h-5 w-5" />
+				</button>
+				<input
+					ref={fileInputRef}
+					type="file"
+					accept="image/jpeg,image/png,image/webp,image/avif"
+					hidden
+					onChange={e => handleFileSelect(e.target.files?.[0])}
+				/>
 				<button
 					type="button"
 					onClick={() => {
@@ -825,7 +951,7 @@ export function ChatWindow({
 				)}
 				<button
 					type="submit"
-					disabled={!input.trim()}
+					disabled={(!input.trim() && !pendingAttachment) || uploadingAttachment}
 					aria-label="Отправить"
 					className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 bg-zinc-950 text-white transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 dark:focus-visible:ring-white/60 dark:focus-visible:ring-offset-zinc-900"
 				>
@@ -835,6 +961,22 @@ export function ChatWindow({
 			{emojiOpen && <EmojiPicker onPick={insertEmoji} />}
 			{cannedOpen && (
 				<CannedResponsesPanel items={cannedResponses} onPick={insertCanned} />
+			)}
+			{lightboxUrl && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6"
+					onClick={() => setLightboxUrl(null)}
+				>
+					<img src={lightboxUrl} alt="" className="max-h-full max-w-full rounded-lg" />
+					<button
+						type="button"
+						onClick={() => setLightboxUrl(null)}
+						aria-label="Закрыть"
+						className="absolute right-4 top-4 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border-0 bg-white/10 text-white hover:bg-white/20"
+					>
+						<X aria-hidden="true" className="h-5 w-5" />
+					</button>
+				</div>
 			)}
 		</div>
 	)

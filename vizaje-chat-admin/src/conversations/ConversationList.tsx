@@ -50,6 +50,7 @@ function conversationStub(id: number): Conversation {
 		assigneeEmail: null,
 		lastMessageText: null,
 		lastMessageSender: null,
+		lastMessageHasAttachment: false,
 		lastMessageAt: null,
 		unreadCount: 0
 	}
@@ -530,14 +531,14 @@ export function ConversationList({
 											>
 												{typingIds.has(c.id)
 													? 'печатает…'
-													: c.lastMessageText
+													: c.lastMessageText || c.lastMessageHasAttachment
 														? `${
 																c.lastMessageSender === 'admin'
 																	? 'Вы: '
 																	: c.lastMessageSender === 'bot'
 																		? 'Бот: '
 																		: ''
-															}${c.lastMessageText}`
+															}${c.lastMessageText || '📷 Изображение'}`
 														: 'Нет сообщений'}
 											</span>
 											{unread > 0 && (

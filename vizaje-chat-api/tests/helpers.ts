@@ -80,6 +80,36 @@ export async function api(
 	return { status: res.status, body: json }
 }
 
+// multipart-загрузка файла — отдельно от api(), у которого тело всегда JSON
+export async function apiUpload(
+	path: string,
+	{ token, file }: { token?: string; file: Blob }
+) {
+	const form = new FormData()
+	form.append('file', file)
+	const res = await fetch(baseUrl() + path, {
+		method: 'POST',
+		headers: token ? { authorization: `Bearer ${token}` } : undefined,
+		body: form
+	})
+	let json: any
+	try {
+		json = await res.json()
+	} catch {
+		json = undefined
+	}
+	return { status: res.status, body: json }
+}
+
+// минимальный валидный PNG (1x1 прозрачный пиксель) — для тестов загрузки,
+// чтобы не таскать бинарный файл-фикстуру в репозитории
+export const TINY_PNG_BASE64 =
+	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+export function tinyPngFile(name = 'pixel.png') {
+	const bytes = Uint8Array.from(atob(TINY_PNG_BASE64), c => c.charCodeAt(0))
+	return new File([bytes], name, { type: 'image/png' })
+}
+
 export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 // WS-клиент: копит сообщения, умеет ждать нужное

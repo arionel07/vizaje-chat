@@ -20,6 +20,7 @@ import {
 	getWidgetTheme,
 	summarizeSchedule
 } from '../settings/service'
+import { parseAttachmentInput } from '../uploads/service'
 import {
 	createSession,
 	findConversationIdBySessionId,
@@ -67,19 +68,29 @@ export const widgetRoutes = new Elysia()
 				set.status = 404
 				return { error: 'Reply target not found' }
 			}
+			const attachment = parseAttachmentInput(body)
+			if (!body.text && !attachment) {
+				set.status = 422
+				return { error: 'Empty message' }
+			}
 			const msg = await addMessage(
 				conversationId,
 				'visitor',
-				body.text,
-				body.replyToId
+				body.text ?? '',
+				body.replyToId,
+				attachment
 			)
 			publishMessage(conversationId, msg)
 			return msg
 		},
 		{
 			body: t.Object({
-				text: t.String(),
-				replyToId: t.Optional(t.Integer({ minimum: 1 }))
+				text: t.Optional(t.String()),
+				replyToId: t.Optional(t.Integer({ minimum: 1 })),
+				attachmentUrl: t.Optional(t.String()),
+				attachmentType: t.Optional(t.String()),
+				attachmentName: t.Optional(t.String()),
+				attachmentSize: t.Optional(t.Number())
 			})
 		}
 	)

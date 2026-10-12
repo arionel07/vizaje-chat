@@ -106,6 +106,9 @@
 	const PROACTIVE_DISMISSED_KEY = 'widget_proactive_dismissed'
 	const LONG_PRESS_MS = 450 // долгое нажатие на сообщение (телефон) — ответить
 	const QUOTE_LENGTH = 200
+	// клиентская проверка перед загрузкой — финальное слово всё равно за сервером
+	const ALLOWED_ATTACHMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif']
+	const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
 
 	// --- иконки (lucide, inline: виджет без сборки и зависимостей) -----------
 	const svg = (body, size = 24, extra = '') =>
@@ -139,6 +142,10 @@
 	const ICON_MORE = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
 <circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/>
 <circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg>`
+	const ICON_ATTACH = svg(
+		'<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+		22
+	)
 
 	// --- разметка и стили (Shadow DOM: стили сайта и виджета не пересекаются) --
 	const host = document.createElement('div')
@@ -317,6 +324,27 @@
   .emoji-empty { grid-column: 1 / -1; padding: 24px 8px; text-align: center; font-size: 13px; color: var(--muted); }
   .root.emoji-open .composer { padding-bottom: 10px; }
   .root.emoji-open .privacy { display: none; }
+  .attach-btn { flex: none; width: 34px; height: 34px; border-radius: 50%; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+  .attach-btn:hover { background: var(--surface); color: var(--fg); }
+  .attach-preview { display: flex; align-items: center; gap: 8px; padding: 0 0 8px; }
+  .attach-thumb-wrap { position: relative; flex: none; width: 48px; height: 48px; border-radius: 10px; overflow: hidden; background: var(--surface); }
+  .attach-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .attach-thumb-wrap.uploading .attach-thumb { opacity: .4; }
+  .attach-spinner { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; }
+  .attach-thumb-wrap.uploading .attach-spinner { display: flex; }
+  .attach-spinner::after { content: ''; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--fg); animation: attach-spin .7s linear infinite; }
+  @keyframes attach-spin { to { transform: rotate(360deg); } }
+  .attach-name { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attach-remove { flex: none; width: 26px; height: 26px; border-radius: 50%; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+  .attach-remove:hover { background: var(--surface); color: var(--fg); }
+  .bubble .attachment-img { display: block; max-width: 220px; max-height: 220px; border-radius: 12px; margin-top: 4px; cursor: zoom-in; object-fit: cover; }
+  .bubble .text:empty { display: none; }
+  .lightbox { position: fixed; inset: 0; z-index: calc(var(--vz-z, 999999) + 1); background: rgba(0,0,0,.85);
+    display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; display: block; }
+  .lightbox-close { position: absolute; top: 16px; right: 16px; width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(255,255,255,.12); color: #fff; display: flex; align-items: center; justify-content: center; }
+  .lightbox-close:hover { background: rgba(255,255,255,.22); }
   .mic-btn { flex: none; width: 34px; height: 34px; border-radius: 50%; color: var(--muted); display: flex; align-items: center; justify-content: center; }
   .mic-btn:hover { background: var(--surface); color: var(--fg); }
   .mic-btn .ic-stop { display: none; }
@@ -444,11 +472,18 @@
       <button class="icon-btn reply-cancel" type="button" aria-label="Отменить ответ">${ICON_CLOSE}</button>
     </div>
     <form class="composer">
+      <div class="attach-preview" hidden>
+        <span class="attach-thumb-wrap"><img class="attach-thumb" alt="" /><span class="attach-spinner"></span></span>
+        <span class="attach-name"></span>
+        <button class="icon-btn attach-remove" type="button" aria-label="Убрать файл">${ICON_CLOSE}</button>
+      </div>
       <div class="composer-box">
         <textarea class="input" rows="1" placeholder="Задать вопрос…" aria-label="Сообщение"></textarea>
         <div class="composer-row">
           <div class="composer-icons">
             <button class="emoji-btn" type="button" aria-label="Эмодзи" aria-expanded="false" aria-controls="emoji-panel">${ICON_SMILE}</button>
+            <button class="attach-btn" type="button" aria-label="Прикрепить изображение">${ICON_ATTACH}</button>
+            <input class="file-input" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden />
             <button class="mic-btn" type="button" aria-label="Надиктовать сообщение" aria-pressed="false" title="Голосовой ввод: речь распознаёт ваш браузер" hidden><span class="ic-mic">${ICON_MIC}</span><span class="ic-stop">${ICON_STOP}</span></button>
           </div>
           <button class="send" type="submit" aria-label="Отправить" disabled>${ICON_SEND}</button>
@@ -494,6 +529,13 @@
 	const form = $('.composer')
 	const replyBar = $('.reply-bar')
 	const emojiBtn = $('.emoji-btn')
+	const attachBtn = $('.attach-btn')
+	const fileInput = $('.file-input')
+	const attachPreview = $('.attach-preview')
+	const attachThumbWrap = $('.attach-thumb-wrap')
+	const attachThumb = $('.attach-thumb')
+	const attachName = $('.attach-name')
+	const attachRemove = $('.attach-remove')
 	const micBtn = $('.mic-btn')
 	const note = $('.note')
 	const emojiPanel = $('.emoji-panel')
@@ -529,6 +571,9 @@
 	let lastTypingSent = 0
 	let replyTarget = null // { id, sender, text } — на что сейчас отвечаем
 	let typingTimer
+	let pendingAttachment = null // { url, type, name, size } — загружено, ждёт отправки
+	let attachmentPreviewUrl = null // object URL локального превью, отозвать при очистке
+	let uploadingAttachment = false
 
 	const timeFmt = new Intl.DateTimeFormat('ru-RU', {
 		hour: '2-digit',
@@ -673,6 +718,26 @@
 		setTimeout(() => row.classList.remove('flash'), 1400)
 	}
 
+	// полноэкранный просмотр картинки по тапу — создаётся один раз, лениво
+	let lightbox = null
+	function openLightbox(src) {
+		if (!lightbox) {
+			lightbox = document.createElement('div')
+			lightbox.className = 'lightbox'
+			lightbox.hidden = true
+			lightbox.innerHTML = `<img alt="" /><button type="button" class="lightbox-close" aria-label="Закрыть">${ICON_CLOSE}</button>`
+			lightbox.addEventListener('click', e => {
+				if (e.target === lightbox || e.target.closest('.lightbox-close')) closeLightbox()
+			})
+			root.appendChild(lightbox)
+		}
+		lightbox.querySelector('img').src = src
+		lightbox.hidden = false
+	}
+	function closeLightbox() {
+		if (lightbox) lightbox.hidden = true
+	}
+
 	// message: { id?, sender, text, createdAt?, replyTo? }
 	function renderMessage(m, prepend = false) {
 		const row = document.createElement('div')
@@ -689,6 +754,15 @@
 			text.className = 'text'
 			text.textContent = m.text
 			bubble.appendChild(text)
+			if (m.attachmentUrl) {
+				const img = document.createElement('img')
+				img.className = 'attachment-img'
+				img.src = `${API_URL}${m.attachmentUrl}`
+				img.alt = m.attachmentName || ''
+				img.loading = 'lazy'
+				img.addEventListener('click', () => openLightbox(img.src))
+				bubble.appendChild(img)
+			}
 			const meta = document.createElement('div')
 			meta.className = 'meta'
 			const time = timeFmt.format(m.createdAt ? new Date(m.createdAt) : new Date())
@@ -1188,19 +1262,21 @@
 	function autosize() {
 		input.style.height = 'auto'
 		input.style.height = Math.min(input.scrollHeight, MAX_INPUT_HEIGHT) + 'px'
-		sendBtn.disabled = !input.value.trim()
+		sendBtn.disabled = !input.value.trim() && !pendingAttachment
 	}
 
 	function sendMessage() {
 		const text = input.value.trim()
-		if (text && sendText(text)) {
+		if (uploadingAttachment) return // дождёмся завершения загрузки
+		if ((text || pendingAttachment) && sendText(text, pendingAttachment)) {
 			input.value = ''
+			clearAttachment()
 			autosize()
 		}
 	}
 
 	// отправка от имени посетителя; false — нет соединения (черновик не трогаем)
-	function sendText(text) {
+	function sendText(text, attachment) {
 		if (!ws || ws.readyState !== WebSocket.OPEN) {
 			// нет соединения: не теряем текст, баннер уже объясняет причину
 			banner.hidden = false
@@ -1209,18 +1285,101 @@
 		const clientId = `${Date.now().toString(36)}-${++sendSeq}`
 		abortDictation()
 		const replyToId = replyTarget?.id
-		trackPending(renderMessage({ sender: 'visitor', text, replyTo: replyTarget }), clientId)
+		trackPending(
+			renderMessage({
+				sender: 'visitor',
+				text,
+				replyTo: replyTarget,
+				attachmentUrl: attachment?.url,
+				attachmentName: attachment?.name
+			}),
+			clientId
+		)
 		ws.send(
 			JSON.stringify({
 				text,
 				clientId,
 				lang: BOT_LANG,
-				...(replyToId ? { replyToId } : {})
+				...(replyToId ? { replyToId } : {}),
+				...(attachment
+					? {
+							attachmentUrl: attachment.url,
+							attachmentType: attachment.type,
+							attachmentName: attachment.name,
+							attachmentSize: attachment.size
+						}
+					: {})
 			})
 		)
 		cancelReply()
 		return true
 	}
+
+	// --- вложения (картинки) ---------------------------------------------------
+	function clearAttachment() {
+		pendingAttachment = null
+		uploadingAttachment = false
+		if (attachmentPreviewUrl) {
+			URL.revokeObjectURL(attachmentPreviewUrl)
+			attachmentPreviewUrl = null
+		}
+		attachPreview.hidden = true
+		attachThumbWrap.classList.remove('uploading')
+		fileInput.value = ''
+		autosize()
+	}
+
+	async function handleFileSelect(file) {
+		if (!file) return
+		if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
+			setNote('Поддерживаются только картинки: JPEG, PNG, WEBP, AVIF.', { error: true })
+			fileInput.value = ''
+			return
+		}
+		if (file.size > MAX_ATTACHMENT_SIZE) {
+			setNote('Файл слишком большой — максимум 10MB.', { error: true })
+			fileInput.value = ''
+			return
+		}
+
+		attachmentPreviewUrl = URL.createObjectURL(file)
+		attachThumb.src = attachmentPreviewUrl
+		attachName.textContent = file.name
+		attachPreview.hidden = false
+		attachThumbWrap.classList.add('uploading')
+		uploadingAttachment = true
+		sendBtn.disabled = true
+
+		try {
+			await ensureSession()
+			const form = new FormData()
+			form.append('file', file)
+			const res = await fetch(`${API_URL}/widget/upload`, {
+				method: 'POST',
+				headers: { Authorization: `Bearer ${token}` },
+				body: form
+			})
+			if (!res.ok) {
+				const data = await res.json().catch(() => null)
+				throw new Error(data?.error || 'upload failed')
+			}
+			pendingAttachment = await res.json()
+			uploadingAttachment = false
+			attachThumbWrap.classList.remove('uploading')
+			autosize()
+		} catch (e) {
+			console.error('widget upload failed', e)
+			setNote('Не удалось загрузить файл. Попробуйте ещё раз.', { error: true })
+			clearAttachment()
+		}
+	}
+
+	attachBtn.addEventListener('click', () => fileInput.click())
+	fileInput.addEventListener('change', () => handleFileSelect(fileInput.files?.[0]))
+	attachRemove.addEventListener('click', () => {
+		clearAttachment()
+		input.focus()
+	})
 
 	// --- диктовка (речь → текст, распознаёт браузер) ----------------------------
 	const DICTATION_ERRORS = {
@@ -1421,8 +1580,10 @@
 	})
 	root.addEventListener('keydown', e => {
 		if (e.key !== 'Escape') return
-		// Escape по очереди: панель эмодзи, ответ, чат
-		if (!emojiPanel.hidden) {
+		// Escape по очереди: лайтбокс, панель эмодзи, ответ, чат
+		if (lightbox && !lightbox.hidden) {
+			closeLightbox()
+		} else if (!emojiPanel.hidden) {
 			setEmojiOpen(false)
 			emojiBtn.focus()
 		} else if (replyTarget) cancelReply()

@@ -55,8 +55,15 @@ docker compose logs -f api   # проверить, что поднялся
 
 ## 6. Схема БД и первый админ (один раз)
 
+`drizzle-kit` — devDependency, в прод-образе `api` его нет (`bun install
+--production`), поэтому `bunx drizzle-kit push` внутри контейнера не
+сработает («Cannot find package 'drizzle-kit'»). Применить схему проще всего
+с машины, где есть исходники и установлен Bun (или временно
+`bun install` локально в `vizaje-chat-api`), указав `DATABASE_URL` на
+опубликованный наружу порт `db` — либо накатить нужные `ALTER TABLE`
+вручную через `docker compose exec db psql -U vizaje -d vizaje_chat -c "..."`:
+
 ```
-docker compose exec api bunx drizzle-kit push
 docker compose exec api bun run src/scripts/create-admin.ts admin@vizaje-nica.com '<пароль>'
 ```
 
@@ -86,6 +93,13 @@ curl -X POST "https://api.telegram.org/bot<ТОКЕН>/setWebhook" \
 `url` должен совпадать, `last_error_message` — пустой. Написать боту в
 Telegram — сообщение должно появиться в админке с пометкой Telegram;
 ответ оператора из админки должен прийти в тот же чат.
+
+## 9. Загруженные в чат картинки
+
+Хранятся на диске контейнера `api` в `/app/uploads`, смонтированном как
+именованный том `uploads_data` (см. `docker-compose.yml`) — переживают
+`docker compose up -d --build`, пересоздавать не нужно. Старше
+`ATTACHMENT_RETENTION_DAYS` (по умолчанию 3 дня) бот удаляет сам, раз в сутки.
 
 ## Обновление после новых коммитов
 

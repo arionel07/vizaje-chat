@@ -32,3 +32,11 @@ export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || null
 // (задаётся при регистрации вебхука) — без него /telegram/webhook принимает
 // запросы от кого угодно, кто узнает URL
 export const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || null
+
+// куда на диске складываются загруженные вложения (картинки из чата)
+export const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads'
+// максимальный размер одного файла, байт — по умолчанию 10MB
+export const MAX_UPLOAD_SIZE = Number(process.env.MAX_UPLOAD_SIZE ?? 10 * 1024 * 1024)
+// сколько дней хранить вложение, прежде чем удалить файл с диска (само
+// сообщение в истории остаётся, просто без картинки) — см. uploads/cleanup.ts
+export const ATTACHMENT_RETENTION_DAYS = Number(process.env.ATTACHMENT_RETENTION_DAYS ?? 3)

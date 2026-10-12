@@ -68,6 +68,13 @@ export const messages = pgTable(
 		replyToId: integer('reply_to_id').references((): AnyPgColumn => messages.id, {
 			onDelete: 'set null'
 		}),
+		// вложение (картинка) — не отдельная таблица: одно сообщение = максимум
+		// один файл, этого достаточно по задаче. Удаляются вместе по cron-очистке
+		// (uploads/cleanup.ts) — файл с диска + эти поля, текст сообщения остаётся
+		attachmentUrl: text('attachment_url'),
+		attachmentType: text('attachment_type'),
+		attachmentName: text('attachment_name'),
+		attachmentSize: integer('attachment_size'),
 		createdAt: timestamp('created_at').defaultNow().notNull()
 	},
 	t => [index('messages_conversation_id_idx').on(t.conversationId, t.id)]

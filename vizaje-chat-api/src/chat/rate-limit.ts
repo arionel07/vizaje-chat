@@ -32,6 +32,7 @@ export function resetRateLimits() {
 	allowVisitorRead.reset()
 	allowLoginAttempt.reset()
 	allowSessionCreate.reset()
+	allowVisitorUpload.reset()
 }
 
 // сообщения посетителя: 5 за 10 секунд на беседу
@@ -42,3 +43,6 @@ export const allowVisitorRead = createLimiter(60_000, 30)
 export const allowLoginAttempt = createLimiter(15 * 60_000, 10)
 // создание widget-сессий: 10 в час на IP
 export const allowSessionCreate = createLimiter(60 * 60_000, 10)
+// загрузка файлов посетителем: 10 за 10 минут на сессию — картинки весят
+// больше текста, лимит заметно щедрее по времени, чем у сообщений
+export const allowVisitorUpload = createLimiter(10 * 60_000, 10)

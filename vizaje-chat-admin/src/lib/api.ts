@@ -48,6 +48,7 @@ export type Conversation = {
 	assigneeEmail: string | null
 	lastMessageText: string | null
 	lastMessageSender: string | null
+	lastMessageHasAttachment: boolean
 	lastMessageAt: string | null
 	unreadCount: number
 }
@@ -149,8 +150,33 @@ export async function fetchMessages(
 	handleUnauthorized(res)
 	assertOk(res)
 	return res.json() as Promise<
-		Array<{ id: number; sender: string; text: string; createdAt: string }>
+		Array<{
+			id: number
+			sender: string
+			text: string
+			createdAt: string
+			attachmentUrl?: string | null
+			attachmentType?: string | null
+			attachmentName?: string | null
+			attachmentSize?: number | null
+		}>
 	>
+}
+
+export type UploadedAttachment = { url: string; type: string; name: string; size: number }
+
+// загрузка картинки оператором (для /admin/upload); url в ответе — относительный
+// (/uploads/<uuid>.<ext>), подставляется к API_URL при рендере и при отправке сообщения
+export async function uploadAttachment(token: string, file: File) {
+	const form = new FormData()
+	form.append('file', file)
+	const res = await fetch(`${API_URL}/admin/upload`, {
+		method: 'POST',
+		headers: { Authorization: `Bearer ${token}` },
+		body: form
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<UploadedAttachment>(res)
 }
 
 // история беседы .txt файлом; имя берём из Content-Disposition сервера

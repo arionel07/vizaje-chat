@@ -53,12 +53,20 @@ async function getReplyTo(messageId: number): Promise<ReplyTo | null> {
 	return row ?? null
 }
 
+export type Attachment = {
+	url: string
+	type: string
+	name: string
+	size: number
+}
+
 // replyToId должен быть заранее проверен через replyTargetExists
 export async function addMessage(
 	conversationId: number,
 	sender: 'visitor' | 'admin' | 'bot' | 'system',
 	text: string,
-	replyToId?: number | null
+	replyToId?: number | null,
+	attachment?: Attachment | null
 ) {
 	// посетитель пишет в закрытую беседу — открываем её заново
 	if (sender === 'visitor') {
@@ -73,7 +81,16 @@ export async function addMessage(
 
 	const [message] = await db
 		.insert(messages)
-		.values({ conversationId, sender, text, replyToId: replyToId ?? null })
+		.values({
+			conversationId,
+			sender,
+			text,
+			replyToId: replyToId ?? null,
+			attachmentUrl: attachment?.url ?? null,
+			attachmentType: attachment?.type ?? null,
+			attachmentName: attachment?.name ?? null,
+			attachmentSize: attachment?.size ?? null
+		})
 		.returning()
 	if (!message) throw new Error('Failed to insert message')
 	return {
@@ -112,6 +129,10 @@ export async function getMessages(
 			text: messages.text,
 			createdAt: messages.createdAt,
 			replyToId: messages.replyToId,
+			attachmentUrl: messages.attachmentUrl,
+			attachmentType: messages.attachmentType,
+			attachmentName: messages.attachmentName,
+			attachmentSize: messages.attachmentSize,
 			parentSender: parent.sender,
 			parentText: sql<string | null>`left(${parent.text}, ${REPLY_SNIPPET_LENGTH})`
 		})
@@ -218,6 +239,11 @@ export async function getConversations({
 			)`,
 			lastMessageSender: sql<string | null>`(
 				select m.sender::text from messages m
+				where m.conversation_id = ${convId}
+				order by m.id desc limit 1
+			)`,
+			lastMessageHasAttachment: sql<boolean>`(
+				select m.attachment_url is not null from messages m
 				where m.conversation_id = ${convId}
 				order by m.id desc limit 1
 			)`,
@@ -387,17 +413,22 @@ export async function exportConversationText(conversationId: number) {
 		.select({
 			sender: messages.sender,
 			text: messages.text,
-			createdAt: messages.createdAt
+			createdAt: messages.createdAt,
+			attachmentUrl: messages.attachmentUrl,
+			attachmentName: messages.attachmentName
 		})
 		.from(messages)
 		.where(eq(messages.conversationId, conversationId))
 		.orderBy(messages.id)
 
-	const lines = rows.map(m =>
-		m.sender === 'system'
-			? `--- ${m.text} ---`
-			: `[${formatExportDate(m.createdAt)}] ${EXPORT_SENDER_LABELS[m.sender] ?? m.sender}: ${m.text}`
-	)
+	const lines = rows.map(m => {
+		if (m.sender === 'system') return `--- ${m.text} ---`
+		const attachmentNote = m.attachmentUrl
+			? `[изображение: ${m.attachmentName ?? m.attachmentUrl}]`
+			: null
+		const text = [m.text || null, attachmentNote].filter(Boolean).join(' ')
+		return `[${formatExportDate(m.createdAt)}] ${EXPORT_SENDER_LABELS[m.sender] ?? m.sender}: ${text}`
+	})
 
 	const header = `Беседа #${conversationId} — экспортировано ${formatExportDate(new Date())}`
 	return [header, '', ...lines].join('\n')

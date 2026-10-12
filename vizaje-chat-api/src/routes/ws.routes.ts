@@ -16,6 +16,7 @@ import {
 import { getConversationChannel, sendTelegramMessage } from '../telegram/service'
 import { sendExpoPush } from '../push-tokens/expo-push'
 import { getAllPushTokens } from '../push-tokens/service'
+import { parseAttachmentInput } from '../uploads/service'
 
 type VisitorStore = {
 	type: 'visitor'
@@ -66,14 +67,23 @@ const lastTyping = new Map<string, number>()
 
 const MAX_TEXT_LENGTH = 4000
 
-// Elysia парсит JSON-строку в объект сам; невалидный JSON приходит строкой
+// Elysia парсит JSON-строку в объект сам; невалидный JSON приходит строкой.
+// '' — текста нет (допустимо, если есть вложение), null — текст есть, но некорректен
 function parseText(body: unknown): string | null {
-	if (typeof body !== 'object' || body === null) return null
+	if (typeof body !== 'object' || body === null) return ''
 	const text = (body as { text?: unknown }).text
+	if (text === undefined) return ''
 	if (typeof text !== 'string') return null
 	const trimmed = text.trim()
-	if (!trimmed || trimmed.length > MAX_TEXT_LENGTH) return null
+	if (trimmed.length > MAX_TEXT_LENGTH) return null
 	return trimmed
+}
+
+// вложение (картинка) из тела WS-сообщения — доверяем форме, которую сами же
+// вернули из /widget|admin/upload (см. uploads/service.ts)
+function getAttachment(body: unknown) {
+	if (typeof body !== 'object' || body === null) return null
+	return parseAttachmentInput(body as Record<string, unknown>)
 }
 
 // Необязательный id сообщения, на которое отвечаем: undefined — не указан, null — некорректный
@@ -217,8 +227,9 @@ export const wsRoutes = new Elysia().ws('/ws', {
 
 		const clientId = getClientId(body)
 		const text = parseText(body)
+		const attachment = getAttachment(body)
 		const replyToId = getReplyToId(body)
-		if (!text || replyToId === null) {
+		if (text === null || replyToId === null || (!text && !attachment)) {
 			sendError(ws, 'Invalid message', clientId)
 			return
 		}
@@ -236,7 +247,7 @@ export const wsRoutes = new Elysia().ws('/ws', {
 				sendError(ws, 'Reply target not found', clientId)
 				return
 			}
-			const msg = await addMessage(conversationId, 'visitor', text, replyToId)
+			const msg = await addMessage(conversationId, 'visitor', text, replyToId, attachment)
 			const payload = JSON.stringify(msg)
 			ws.publish(`conversation:${conversationId}`, payload)
 			ws.publish('admin:global', payload)
@@ -255,7 +266,7 @@ export const wsRoutes = new Elysia().ws('/ws', {
 
 			// точное совпадение с триггером (например, клик по quick-reply кнопке) —
 			// бот отвечает сам, без участия оператора; не совпало — ждёт оператора как раньше
-			const botResponse = await findBotResponseByTrigger(text)
+			const botResponse = text ? await findBotResponseByTrigger(text) : null
 			if (botResponse) {
 				const lang = getLang(body)
 				const answer = lang === 'ro' ? botResponse.answerRo : botResponse.answerRu
@@ -283,16 +294,17 @@ export const wsRoutes = new Elysia().ws('/ws', {
 				sendError(ws, 'Reply target not found', clientId)
 				return
 			}
-			const msg = await addMessage(conversationId, 'admin', text, replyToId)
+			const msg = await addMessage(conversationId, 'admin', text, replyToId, attachment)
 			const payload = JSON.stringify(msg)
 			ws.publish(`conversation:${conversationId}`, payload)
 			ws.publish('admin:global', payload)
 			sendAck(ws, msg, clientId)
 
 			// беседа из Telegram — оператор отвечает прямо из админки, без
-			// переключения в сам Telegram; дублируем ответ туда, best-effort
+			// переключения в сам Telegram; дублируем ответ туда, best-effort.
+			// Вложение в Telegram не дублируется — только текст, если он есть
 			const info = await getConversationChannel(conversationId)
-			if (info?.channel === 'telegram' && info.telegramChatId) {
+			if (info?.channel === 'telegram' && info.telegramChatId && text) {
 				sendTelegramMessage(info.telegramChatId, text).catch(error =>
 					console.error('Failed to relay reply to Telegram:', error)
 				)
