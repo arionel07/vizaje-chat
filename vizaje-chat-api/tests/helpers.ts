@@ -5,7 +5,7 @@ import { createAdmin } from '../src/auth/service'
 import { setPublisher } from '../src/chat/events'
 import { resetRateLimits } from '../src/chat/rate-limit'
 import { db } from '../src/db/client'
-import { createSession } from '../src/widget/service'
+import { createSession, getOrCreateConversationId } from '../src/widget/service'
 
 export const ADMIN_EMAIL = 'admin@test.io'
 export const ADMIN_PASSWORD = 'correct-password'
@@ -44,9 +44,15 @@ export async function makeAdmin(email = ADMIN_EMAIL, password = ADMIN_PASSWORD) 
 	return { admin, token }
 }
 
-// посетитель через сервисную функцию (эндпоинт ограничен rate-limit по IP)
-export function makeVisitor() {
-	return createSession()
+// посетитель через сервисную функцию (эндпоинт ограничен rate-limit по IP).
+// В проде беседа заводится только при первом сообщении (см. widget/service.ts) —
+// тут заводим сразу, чтобы не переписывать все тесты, которые пишут в неё
+// напрямую через addMessage(conversationId, ...), минуя отправку сообщения
+export async function makeVisitor() {
+	const { token } = createSession()
+	const { sessionId } = jwt.decode(token) as { sessionId: string }
+	const conversationId = await getOrCreateConversationId(sessionId)
+	return { token, conversationId }
 }
 
 export async function api(

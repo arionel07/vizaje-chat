@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 import { addMessage } from '../src/chat/service'
+import { db } from '../src/db/client'
+import { conversations } from '../src/db/schema'
 import { api, connectWs, makeAdmin, makeVisitor, resetDb } from './helpers'
 
 let adminToken: string
@@ -112,13 +114,34 @@ describe('пагинация истории', () => {
 
 // в конце файла: исчерпывает лимит создания сессий для этого процесса
 describe('создание сессии', () => {
-	test('POST /widget/session выдаёт токен и создаёт беседу', async () => {
+	test('POST /widget/session выдаёт токен, но беседу не создаёт — только при первом сообщении', async () => {
 		const res = await api('/widget/session', { method: 'POST' })
 		expect(res.status).toBe(200)
 		expect(typeof res.body.token).toBe('string')
-		expect(typeof res.body.conversationId).toBe('number')
+		expect(res.body.conversationId).toBeUndefined()
+
+		// беседы ещё нет — история, статус и «прочитано» ведут себя как для пустой
 		const history = await api('/widget/messages', { token: res.body.token })
 		expect(history.body).toEqual([])
+		const state = await api('/widget/state', { token: res.body.token })
+		expect(state.body).toEqual({ adminLastReadAt: null })
+		const read = await api('/widget/read', { method: 'POST', token: res.body.token })
+		expect(read.body).toEqual({ ok: true })
+
+		const countBefore = (
+			await db.select().from(conversations)
+		).length
+
+		// только теперь, при первом сообщении, беседа реально появляется в БД
+		const sent = await api('/widget/messages', {
+			method: 'POST',
+			token: res.body.token,
+			body: { text: 'привет' }
+		})
+		expect(sent.status).toBe(200)
+		expect(
+			(await db.select().from(conversations)).length
+		).toBe(countBefore + 1)
 	})
 
 	test('больше 10 сессий в час с одного IP → 429', async () => {

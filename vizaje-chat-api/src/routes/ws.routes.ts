@@ -8,13 +8,54 @@ import {
 	conversationExists,
 	replyTargetExists
 } from '../chat/service'
-import { verifySessionToken } from '../widget/service'
+import {
+	findConversationIdBySessionId,
+	getOrCreateConversationId,
+	verifySessionToken
+} from '../widget/service'
 import { sendExpoPush } from '../push-tokens/expo-push'
 import { getAllPushTokens } from '../push-tokens/service'
 
-type ConnStore =
-	| { type: 'visitor'; conversationId: number }
-	| { type: 'admin'; email: string }
+type VisitorStore = {
+	type: 'visitor'
+	sessionId: string
+	// null — посетитель ещё ничего не написал, беседы ещё нет; заводится и
+	// привязывается к сокету лениво, в момент первого сообщения
+	conversationId: number | null
+	// пока conversationId не определён, несколько сообщений/typing-событий могут
+	// прийти почти одновременно (клиент не ждёт завершения open() перед отправкой) —
+	// single-flight: все ждут ОДИН и тот же запрос к БД, иначе порядок его
+	// завершения не совпадает с порядком прихода и rate-limit считает не то
+	// сообщение «шестым» (проверено тестом на лимит сообщений)
+	resolving: Promise<number | null> | null
+}
+type ConnStore = VisitorStore | { type: 'admin'; email: string }
+
+// allowCreate=false (typing): только читает — беседа должна уже существовать,
+// иначе просто нечего транслировать. allowCreate=true (сообщение): при
+// отсутствии беседы заводит её — единственное место, где это происходит
+async function resolveConversationId(
+	store: VisitorStore,
+	ws: { subscribe: (room: string) => unknown },
+	allowCreate: boolean
+): Promise<number | null> {
+	while (store.conversationId === null) {
+		if (!store.resolving) {
+			store.resolving = allowCreate
+				? getOrCreateConversationId(store.sessionId)
+				: findConversationIdBySessionId(store.sessionId)
+		}
+		const id = await store.resolving
+		store.resolving = null
+		if (id !== null) {
+			store.conversationId = id
+			ws.subscribe(`conversation:${id}`)
+			return id
+		}
+		if (!allowCreate) return null
+	}
+	return store.conversationId
+}
 
 const connections = new Map<string, ConnStore>()
 
@@ -85,7 +126,7 @@ function sendAck(
 }
 
 export const wsRoutes = new Elysia().ws('/ws', {
-	open(ws) {
+	async open(ws) {
 		const token = ws.data.query.token as string | undefined
 		const decoded = token ? (jwt.decode(token) as any) : null
 
@@ -101,7 +142,12 @@ export const wsRoutes = new Elysia().ws('/ws', {
 				ws.close()
 				return
 			}
-			store = { type: 'visitor', conversationId: session.conversationId }
+			store = {
+				type: 'visitor',
+				sessionId: session.sessionId,
+				conversationId: null,
+				resolving: null
+			}
 		} else {
 			const admin = verifyToken(`Bearer ${token}`)
 			if (!admin) {
@@ -111,17 +157,26 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			store = { type: 'admin', email: admin.email }
 		}
 
+		// кладём запись СРАЗУ, до какого-либо await ниже: клиент может прислать
+		// первое сообщение сразу после открытия сокета — быстрее, чем сервер
+		// успеет закончить асинхронную подготовку, и message() просто дропнет
+		// его, если к этому моменту соединения ещё нет в connections
+		connections.set(ws.id, store)
+
+		if (store.type === 'admin') {
+			ws.subscribe('admin:global')
+			console.log('WS connected: admin')
+			return
+		}
+
+		// у новой сессии беседы ещё нет (не создаём, пока не напишет) — только читаем.
+		// Используем тот же single-flight, что и message(): если сообщение придёт
+		// раньше, чем этот поиск завершится, оно переиспользует этот же запрос
+		// вместо того, чтобы запускать свой и гнаться с этим же
+		await resolveConversationId(store, ws, false)
 		console.log(
 			'WS connected:',
-			store.type === 'visitor'
-				? `visitor, conversation ${store.conversationId}`
-				: 'admin'
-		)
-		connections.set(ws.id, store)
-		ws.subscribe(
-			store.type === 'visitor'
-				? `conversation:${store.conversationId}`
-				: 'admin:global'
+			`visitor, conversation ${store.conversationId ?? '(нет, ещё не писал)'}`
 		)
 	},
 	async message(ws, body) {
@@ -134,14 +189,19 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			if (now - (lastTyping.get(ws.id) ?? 0) < TYPING_MIN_INTERVAL_MS) return
 			lastTyping.set(ws.id, now)
 			if (store.type === 'visitor') {
-				ws.publish(
-					'admin:global',
-					JSON.stringify({
-						type: 'typing',
-						from: 'visitor',
-						conversationId: store.conversationId
-					})
-				)
+				// не создаём беседу ради «печатает» — только если она уже есть
+				// (или вот-вот появится из уже идущего resolveConversationId)
+				const conversationId = await resolveConversationId(store, ws, false)
+				if (conversationId !== null) {
+					ws.publish(
+						'admin:global',
+						JSON.stringify({
+							type: 'typing',
+							from: 'visitor',
+							conversationId
+						})
+					)
+				}
 			} else {
 				const id = (body as { conversationId?: unknown }).conversationId
 				if (typeof id === 'number' && Number.isInteger(id)) {
@@ -163,17 +223,21 @@ export const wsRoutes = new Elysia().ws('/ws', {
 		}
 
 		if (store.type === 'visitor') {
-			if (!allowVisitorMessage(store.conversationId)) {
+			// первое сообщение этой сессии — заводим беседу только сейчас и
+			// подписываем сокет на её комнату (раньше подписки не было)
+			const conversationId = await resolveConversationId(store, ws, true)
+			if (conversationId === null) throw new Error('unreachable: allowCreate=true always returns an id')
+			if (!allowVisitorMessage(conversationId)) {
 				sendError(ws, 'Too many messages', clientId)
 				return
 			}
-			if (replyToId && !(await replyTargetExists(store.conversationId, replyToId))) {
+			if (replyToId && !(await replyTargetExists(conversationId, replyToId))) {
 				sendError(ws, 'Reply target not found', clientId)
 				return
 			}
-			const msg = await addMessage(store.conversationId, 'visitor', text, replyToId)
+			const msg = await addMessage(conversationId, 'visitor', text, replyToId)
 			const payload = JSON.stringify(msg)
-			ws.publish(`conversation:${store.conversationId}`, payload)
+			ws.publish(`conversation:${conversationId}`, payload)
 			ws.publish('admin:global', payload)
 			sendAck(ws, msg, clientId)
 
@@ -181,9 +245,9 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			getAllPushTokens()
 				.then(tokens =>
 					sendExpoPush(tokens, {
-						title: `Беседа #${store.conversationId}`,
+						title: `Беседа #${conversationId}`,
 						body: text,
-						data: { conversationId: store.conversationId }
+						data: { conversationId }
 					})
 				)
 				.catch(error => console.error('Failed to notify admins:', error))
@@ -194,9 +258,9 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			if (botResponse) {
 				const lang = getLang(body)
 				const answer = lang === 'ro' ? botResponse.answerRo : botResponse.answerRu
-				const botMsg = await addMessage(store.conversationId, 'bot', answer)
+				const botMsg = await addMessage(conversationId, 'bot', answer)
 				const botPayload = JSON.stringify(botMsg)
-				ws.publish(`conversation:${store.conversationId}`, botPayload)
+				ws.publish(`conversation:${conversationId}`, botPayload)
 				ws.publish('admin:global', botPayload)
 				// ws.publish не шлёт отправителю его же публикацию, а получатель бота — он и есть
 				ws.send(botPayload)

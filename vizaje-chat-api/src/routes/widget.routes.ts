@@ -20,7 +20,12 @@ import {
 	getWidgetTheme,
 	summarizeSchedule
 } from '../settings/service'
-import { createSession, verifySessionToken } from '../widget/service'
+import {
+	createSession,
+	findConversationIdBySessionId,
+	getOrCreateConversationId,
+	verifySessionToken
+} from '../widget/service'
 
 export const widgetRoutes = new Elysia()
 	// публичный: посетитель ещё без сессии, когда только открывает чат
@@ -40,6 +45,8 @@ export const widgetRoutes = new Elysia()
 		}
 		return createSession()
 	})
+	// HTTP-путь отправки сообщения (основной — через WS, см. ws.routes.ts); беседа
+	// заводится здесь же, в момент первого сообщения — не раньше
 	.post(
 		'/widget/messages',
 		async ({ headers, body, set }) => {
@@ -48,24 +55,25 @@ export const widgetRoutes = new Elysia()
 				set.status = 401
 				return { error: 'Unauthorized' }
 			}
-			if (!allowVisitorMessage(session.conversationId)) {
+			const conversationId = await getOrCreateConversationId(session.sessionId)
+			if (!allowVisitorMessage(conversationId)) {
 				set.status = 429
 				return { error: 'Too many messages' }
 			}
 			if (
 				body.replyToId &&
-				!(await replyTargetExists(session.conversationId, body.replyToId))
+				!(await replyTargetExists(conversationId, body.replyToId))
 			) {
 				set.status = 404
 				return { error: 'Reply target not found' }
 			}
 			const msg = await addMessage(
-				session.conversationId,
+				conversationId,
 				'visitor',
 				body.text,
 				body.replyToId
 			)
-			publishMessage(session.conversationId, msg)
+			publishMessage(conversationId, msg)
 			return msg
 		},
 		{
@@ -75,18 +83,21 @@ export const widgetRoutes = new Elysia()
 			})
 		}
 	)
-	// посетитель увидел сообщения — оператор покажет «Прочитано»
+	// посетитель увидел сообщения — оператор покажет «Прочитано».
+	// Беседы ещё нет (ничего не писал) — читать нечего, это не ошибка
 	.post('/widget/read', async ({ headers, set }) => {
 		const session = verifySessionToken(headers.authorization)
 		if (!session) {
 			set.status = 401
 			return { error: 'Unauthorized' }
 		}
-		if (!allowVisitorRead(session.conversationId)) {
+		const conversationId = await findConversationIdBySessionId(session.sessionId)
+		if (conversationId === null) return { ok: true }
+		if (!allowVisitorRead(conversationId)) {
 			set.status = 429
 			return { error: 'Too many requests' }
 		}
-		const at = await markVisitorRead(session.conversationId)
+		const at = await markVisitorRead(conversationId)
 		if (!at) {
 			set.status = 404
 			return { error: 'Conversation not found' }
@@ -94,7 +105,7 @@ export const widgetRoutes = new Elysia()
 		publishToAdmins({
 			type: 'read',
 			by: 'visitor',
-			conversationId: session.conversationId,
+			conversationId,
 			at: at.toISOString()
 		})
 		return { ok: true }
@@ -106,7 +117,9 @@ export const widgetRoutes = new Elysia()
 			set.status = 401
 			return { error: 'Unauthorized' }
 		}
-		const at = await getAdminReadAt(session.conversationId)
+		const conversationId = await findConversationIdBySessionId(session.sessionId)
+		if (conversationId === null) return { adminLastReadAt: null }
+		const at = await getAdminReadAt(conversationId)
 		return { adminLastReadAt: at ? at.toISOString() : null }
 	})
 	.get(
@@ -117,7 +130,9 @@ export const widgetRoutes = new Elysia()
 				set.status = 401
 				return { error: 'Unauthorized' }
 			}
-			return getMessages(session.conversationId, query)
+			const conversationId = await findConversationIdBySessionId(session.sessionId)
+			if (conversationId === null) return []
+			return getMessages(conversationId, query)
 		},
 		{
 			query: t.Object({
@@ -133,13 +148,14 @@ export const widgetRoutes = new Elysia()
 			set.status = 401
 			return { error: 'Unauthorized' }
 		}
-		const text = await exportConversationText(session.conversationId)
+		const conversationId = await findConversationIdBySessionId(session.sessionId)
+		const text = conversationId === null ? null : await exportConversationText(conversationId)
 		if (!text) {
 			set.status = 404
 			return { error: 'Conversation not found' }
 		}
 		set.headers['content-type'] = 'text/plain; charset=utf-8'
 		set.headers['content-disposition'] =
-			`attachment; filename="conversation-${session.conversationId}.txt"`
+			`attachment; filename="conversation-${conversationId}.txt"`
 		return text
 	})
