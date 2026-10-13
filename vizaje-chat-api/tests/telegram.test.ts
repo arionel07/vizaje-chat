@@ -199,6 +199,30 @@ describe('Telegram-бот: свободный текст после выбора
 		admin.close()
 	})
 
+	test('оператору приходит системным сообщением выбранная тема — один раз на беседу', async () => {
+		const chatId = 2005
+		const admin = await connectWs(adminToken)
+
+		await api('/telegram/webhook', callback(chatId, 'start'))
+		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
+		await api('/telegram/webhook', callback(chatId, 'cat:app'))
+		await api('/telegram/webhook', message(chatId, 'первое сообщение'))
+
+		const categoryMsg = await admin.waitFor(m => m.sender === 'system')
+		expect(categoryMsg.text).toBe('Тема: Приложение')
+		const conversation = await findConversationByChat(chatId)
+		expect(categoryMsg.conversationId).toBe(conversation!.id)
+
+		// второе сообщение в той же беседе — тему повторно не присылаем
+		const systemCountBefore = admin.messages.filter(m => m.sender === 'system').length
+		await api('/telegram/webhook', message(chatId, 'второе сообщение'))
+		await admin.waitFor(m => m.text === 'второе сообщение')
+		const systemCountAfter = admin.messages.filter(m => m.sender === 'system').length
+		expect(systemCountAfter).toBe(systemCountBefore)
+
+		admin.close()
+	})
+
 	test('категория «Другое»: вопрос тоже доходит до админа и приходит благодарность', async () => {
 		const chatId = 2004
 		const admin = await connectWs(adminToken)

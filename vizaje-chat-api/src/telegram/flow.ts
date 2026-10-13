@@ -90,9 +90,28 @@ async function promptFreeText(chatId: string, lang: Lang, categoryId: CategoryId
 // единственное место во всём меню, где заводится беседа в нашей БД —
 // до этого момента ничего в админку не попадает (навигация и FAQ — чисто
 // в Telegram, через sendTelegramMessage/Buttons, без addMessage)
-async function forwardToAdmin(chatId: string, text: string, attachment?: Attachment | null) {
-	const conversationId = await getOrCreateConversationForChat(chatId)
+async function forwardToAdmin(
+	chatId: string,
+	text: string,
+	categoryId: CategoryId | undefined,
+	attachment?: Attachment | null
+) {
+	const { id: conversationId, created } = await getOrCreateConversationForChat(chatId)
 	if (!allowVisitorMessage(conversationId)) return
+
+	// при заведении беседы — отдельным системным сообщением тема, которую
+	// посетитель выбрал в меню, чтобы оператор видел контекст сразу и не
+	// переспрашивал («Приложение»/«Сайт» и т.п.); всегда по-русски — на языке
+	// оператора, а не посетителя. Только один раз, не на каждое сообщение
+	if (created && categoryId) {
+		const categoryMsg = await addMessage(
+			conversationId,
+			'system',
+			`Тема: ${CATEGORY_LABELS[categoryId].ru}`
+		)
+		publishMessage(conversationId, categoryMsg)
+	}
+
 	const msg = await addMessage(conversationId, 'visitor', text, undefined, attachment)
 	publishMessage(conversationId, msg)
 }
@@ -111,7 +130,7 @@ export async function handleTelegramText(chatId: string, text: string) {
 
 	const state = getChatState(chatId)
 	if (state.step === 'support') {
-		await forwardToAdmin(chatId, text)
+		await forwardToAdmin(chatId, text, state.categoryId)
 		await sendTelegramMessage(chatId, THANKS_FORWARDED[state.lang ?? 'ru'])
 		return
 	}
@@ -163,7 +182,7 @@ export async function handleTelegramPhoto(
 		return
 	}
 
-	await forwardToAdmin(chatId, (caption ?? '').trim(), {
+	await forwardToAdmin(chatId, (caption ?? '').trim(), state.categoryId, {
 		url: result.upload.url,
 		type: result.upload.type,
 		name: result.upload.name,
