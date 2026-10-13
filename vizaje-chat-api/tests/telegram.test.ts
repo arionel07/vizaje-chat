@@ -146,6 +146,24 @@ describe('Telegram-бот: навигация по меню (ничего не �
 		expect(clearedKeyboards).toHaveLength(2)
 	})
 
+	test('/start в режиме «напишите вопрос» сбрасывает меню, а не форвардится как обычный текст', async () => {
+		const chatId = 1006
+		await api('/telegram/webhook', callback(chatId, 'start'))
+		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
+		await api('/telegram/webhook', callback(chatId, 'cat:retail')) // теперь step: 'support'
+
+		await api('/telegram/webhook', message(chatId, '/start'))
+
+		// снова экран Start, а не «Спасибо, передал оператору» на /start как на обычный текст
+		expect(lastKeyboardButtons().map(b => b.data)).toEqual(['start'])
+		expect(texts).toHaveLength(0)
+		expect(await findConversationByChat(chatId)).toBeUndefined()
+
+		// после сброса меню обычный текст (без выбора категории заново) тоже не форвардится
+		await api('/telegram/webhook', message(chatId, 'sdf'))
+		expect(await findConversationByChat(chatId)).toBeUndefined()
+	})
+
 	test('категория «Другое» ведёт себя так же — сразу просит написать вопрос', async () => {
 		const chatId = 1004
 		await api('/telegram/webhook', callback(chatId, 'start'))

@@ -98,13 +98,24 @@ async function forwardToAdmin(chatId: string, text: string, attachment?: Attachm
 }
 
 export async function handleTelegramText(chatId: string, text: string) {
+	// /start — всегда сброс меню, даже если уже в режиме «передано оператору».
+	// Раньше это не проверялось отдельно от остального текста, и набранный
+	// /start в режиме support просто форвардился оператору как обычное
+	// сообщение — выйти из этого режима было нечем (поймано на реальном тесте:
+	// бот раз за разом отвечал «Спасибо! Передал оператору…» на любой текст,
+	// включая /start, без возврата к меню)
+	if (text === '/start' || text.startsWith('/start ')) {
+		await showStart(chatId)
+		return
+	}
+
 	const state = getChatState(chatId)
 	if (state.step === 'support') {
 		await forwardToAdmin(chatId, text)
 		await sendTelegramMessage(chatId, THANKS_FORWARDED[state.lang ?? 'ru'])
 		return
 	}
-	// любой текст вне «живого» общения с оператором (включая /start) —
+	// любой текст вне «живого» общения с оператором —
 	// начинаем/перезапускаем меню с кнопки Start
 	await showStart(chatId)
 }
