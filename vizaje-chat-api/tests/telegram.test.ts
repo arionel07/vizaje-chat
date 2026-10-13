@@ -199,7 +199,7 @@ describe('Telegram-бот: свободный текст после выбора
 		admin.close()
 	})
 
-	test('оператору приходит системным сообщением выбранная тема — один раз на беседу', async () => {
+	test('оператору приходит системным сообщением выбранная тема — один раз за заход, но заново при новом обращении', async () => {
 		const chatId = 2005
 		const admin = await connectWs(adminToken)
 
@@ -213,12 +213,26 @@ describe('Telegram-бот: свободный текст после выбора
 		const conversation = await findConversationByChat(chatId)
 		expect(categoryMsg.conversationId).toBe(conversation!.id)
 
-		// второе сообщение в той же беседе — тему повторно не присылаем
+		// второе сообщение в том же заходе — тему повторно не присылаем
 		const systemCountBefore = admin.messages.filter(m => m.sender === 'system').length
 		await api('/telegram/webhook', message(chatId, 'второе сообщение'))
 		await admin.waitFor(m => m.text === 'второе сообщение')
 		const systemCountAfter = admin.messages.filter(m => m.sender === 'system').length
 		expect(systemCountAfter).toBe(systemCountBefore)
+
+		// человек вернулся позже с другой проблемой — снова проходит меню,
+		// выбирает другую категорию: тема должна прийти заново, уже новая
+		await api('/telegram/webhook', callback(chatId, 'start'))
+		await api('/telegram/webhook', callback(chatId, 'lang:ru'))
+		await api('/telegram/webhook', callback(chatId, 'cat:site'))
+		await api('/telegram/webhook', message(chatId, 'теперь другой вопрос'))
+
+		const systemMessages = admin.messages.filter(m => m.sender === 'system')
+		expect(systemMessages.at(-1)?.text).toBe('Тема: Сайт')
+		expect(systemMessages).toHaveLength(2) // старая "Приложение" + новая "Сайт"
+		// беседа та же самая — не новая
+		const sameConversation = await findConversationByChat(chatId)
+		expect(sameConversation!.id).toBe(conversation!.id)
 
 		admin.close()
 	})

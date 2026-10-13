@@ -198,31 +198,27 @@ export async function downloadTelegramFile(fileId: string) {
 }
 
 // идемпотентно: один chatId — одна беседа, при повторном сообщении находим ту же
-// (тот же приём, что и getOrCreateConversationId у виджета, см. widget/service.ts).
-// created — беседа только что заведена этим вызовом (а не найдена существующей) —
-// нужно flow.ts, чтобы один раз на беседу показать оператору выбранную тему
-export async function getOrCreateConversationForChat(
-	chatId: string
-): Promise<{ id: number; created: boolean }> {
+// (тот же приём, что и getOrCreateConversationId у виджета, см. widget/service.ts)
+export async function getOrCreateConversationForChat(chatId: string) {
 	const sessionId = sessionIdForChat(chatId)
 
 	const [existing] = await db
 		.select({ id: conversations.id })
 		.from(conversations)
 		.where(eq(conversations.sessionId, sessionId))
-	if (existing) return { id: existing.id, created: false }
+	if (existing) return existing.id
 
 	const [inserted] = await db
 		.insert(conversations)
 		.values({ sessionId, channel: 'telegram', telegramChatId: chatId })
 		.onConflictDoNothing({ target: conversations.sessionId })
 		.returning({ id: conversations.id })
-	if (inserted) return { id: inserted.id, created: true }
+	if (inserted) return inserted.id
 
 	const [row] = await db
 		.select({ id: conversations.id })
 		.from(conversations)
 		.where(eq(conversations.sessionId, sessionId))
 	if (!row) throw new Error('Failed to get or create Telegram conversation')
-	return { id: row.id, created: false }
+	return row.id
 }

@@ -96,20 +96,24 @@ async function forwardToAdmin(
 	categoryId: CategoryId | undefined,
 	attachment?: Attachment | null
 ) {
-	const { id: conversationId, created } = await getOrCreateConversationForChat(chatId)
+	const conversationId = await getOrCreateConversationForChat(chatId)
 	if (!allowVisitorMessage(conversationId)) return
 
-	// при заведении беседы — отдельным системным сообщением тема, которую
-	// посетитель выбрал в меню, чтобы оператор видел контекст сразу и не
-	// переспрашивал («Приложение»/«Сайт» и т.п.); всегда по-русски — на языке
-	// оператора, а не посетителя. Только один раз, не на каждое сообщение
-	if (created && categoryId) {
+	// отдельным системным сообщением — тема, которую посетитель выбрал в
+	// меню, чтобы оператор видел контекст сразу и не переспрашивал
+	// («Приложение»/«Сайт» и т.п.); всегда по-русски — на языке оператора, а
+	// не посетителя. Один раз за этот заход в режим поддержки (не на каждое
+	// сообщение) — но заново при каждом новом прохождении меню: человек мог
+	// вернуться с другой проблемой, и тема в этот раз могла смениться
+	const state = getChatState(chatId)
+	if (categoryId && !state.categoryAnnounced) {
 		const categoryMsg = await addMessage(
 			conversationId,
 			'system',
 			`Тема: ${CATEGORY_LABELS[categoryId].ru}`
 		)
 		publishMessage(conversationId, categoryMsg)
+		setChatState(chatId, { ...state, categoryAnnounced: true })
 	}
 
 	const msg = await addMessage(conversationId, 'visitor', text, undefined, attachment)
