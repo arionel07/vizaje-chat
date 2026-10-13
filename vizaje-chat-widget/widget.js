@@ -7,25 +7,31 @@
  *   data-theme  — auto (по умолчанию, системная тема посетителя) | light | dark
  *   data-title  — заголовок панели (по умолчанию «Поддержка Vizaje-Nica»)
  *   data-agent  — подпись сотрудника под сообщениями (по умолчанию «Поддержка»)
- *   data-lang   — язык диктовки (по умолчанию ru-RU); кнопка микрофона есть только
- *                 в браузерах с распознаванием речи (Chrome, Edge, Safari).
- *                 Также решает, на каком языке ответит бот при автоответах
- *                 (RO, если начинается с "ro", иначе RU)
- *   data-greeting      — приветствие в пустом чате (по умолчанию «Привет! 👋 Чем мы можем помочь?»)
- *   data-subtitle      — подзаголовок под заголовком в шапке панели
- *                        (по умолчанию «Наша команда также может помочь»)
- *   data-quick-replies — быстрые вопросы под приветствием через запятую, до 4 штук:
+ *   data-lang   — ЯВНО задаёт язык виджета и диктовки (например, "ro-RO"); без
+ *                 него язык определяется автоматически по <html lang> страницы
+ *                 (RO — если начинается с "ro", иначе RU). Кнопка диктовки есть
+ *                 только в браузерах с распознаванием речи (Chrome, Edge, Safari).
+ *                 Тот же язык решает, каким текстом ответит бот автоответов и
+ *                 какую из пар ru/ro ниже показывать: весь интерфейс виджета
+ *                 (кнопки, подписи, сообщения об ошибках) переведён на оба языка
+ *   data-greeting      / data-greeting-ro      — приветствие в пустом чате
+ *   data-subtitle      / data-subtitle-ro      — подзаголовок под заголовком в шапке
+ *   data-quick-replies / data-quick-replies-ro — быстрые вопросы под приветствием
+ *                        через запятую, до 4 штук:
  *                        "Есть ли в наличии?,Сроки доставки,Как оформить возврат"
  *   data-privacy-url   — ссылка на политику конфиденциальности; если задана, под полем
  *                        ввода появляется строка «Отправляя сообщение, вы соглашаетесь
  *                        с ...» со ссылкой (без атрибута строка не показывается —
  *                        нечем её подкрепить)
- *   data-privacy-text  — текст ссылки в этой строке (по умолчанию «Политикой конфиденциальности»)
- *   data-proactive-message — текст приглашения, которое само всплывает рядом с кнопкой
- *                        чата через data-proactive-delay секунд; без него фича выключена.
+ *   data-privacy-text  / data-privacy-text-ro  — текст ссылки в этой строке
+ *   data-proactive-message / data-proactive-message-ro — текст приглашения, которое
+ *                        само всплывает рядом с кнопкой чата через data-proactive-delay
+ *                        секунд; без него (обоих вариантов) фича выключена.
  *                        Не показывается, если чат уже открывали в этой вкладке, у
  *                        посетителя уже есть сессия (писал раньше) или приглашение уже
  *                        закрывали крестиком в этом заходе на сайт (sessionStorage)
+ *   Для каждой из пар выше: на RO-странице сначала берётся -ro вариант, если его нет —
+ *   обычный (RU) атрибут, если нет и его — встроенный текст по умолчанию на нужном языке.
  *   data-proactive-delay   — задержка до показа приглашения, в секундах (по умолчанию 20)
  *   data-position      — bottom-right (по умолчанию) | bottom-left
  *   data-z-index       — z-index виджета (по умолчанию 999999)
@@ -52,22 +58,154 @@
 	// база для статики (public/...) — папка, где лежит сам widget.js, не API
 	const ASSET_BASE = (script?.src || '').replace(/[^/]*$/, '')
 	const AVATAR_URL = `${ASSET_BASE}public/vizi-profili.png`
-	const TITLE = cfg.title || 'Поддержка Vizaje-Nica'
-	const AGENT = cfg.agent || 'Поддержка'
 	const THEME = ['light', 'dark'].includes(cfg.theme) ? cfg.theme : 'auto'
-	const LANG = cfg.lang || 'ru-RU'
+	// data-lang — явное переопределение; без него смотрим <html lang> страницы.
+	// Так один и тот же <script> работает одинаково на ru- и ro-страницах сайта,
+	// если они на разных путях/поддоменах с разным <html lang>, без ручной настройки
+	const htmlLang = (document.documentElement.lang || '').toLowerCase()
+	const LANG = cfg.lang || (htmlLang.startsWith('ro') ? 'ro-RO' : 'ru-RU')
 	const BOT_LANG = LANG.toLowerCase().startsWith('ro') ? 'ro' : 'ru'
-	const GREETING = (cfg.greeting || '').trim() || 'Привет! 👋 Чем мы можем помочь?'
-	const SUBTITLE = (cfg.subtitle || '').trim() || 'Наша команда также может помочь'
+
+	// весь встроенный текст интерфейса — на обоих языках; t(key) достаёт нужный
+	const LOCALE = {
+		ru: {
+			title: 'Поддержка Vizaje-Nica',
+			agent: 'Поддержка',
+			greeting: 'Привет! 👋 Чем мы можем помочь?',
+			subtitle: 'Наша команда также может помочь',
+			privacyText: 'Политикой конфиденциальности',
+			privacyPrefix: 'Отправляя сообщение, вы соглашаетесь с ',
+			emojiSmileys: 'Смайлы',
+			emojiGestures: 'Жесты',
+			emojiHearts: 'Сердца',
+			emojiObjects: 'Предметы',
+			emojiNature: 'Еда и природа',
+			emojiRecent: 'Недавние',
+			closeProactive: 'Закрыть приглашение',
+			menuMore: 'Ещё',
+			collapseChat: 'Свернуть чат',
+			cancelReply: 'Отменить ответ',
+			removeFile: 'Убрать файл',
+			inputPlaceholder: 'Задать вопрос…',
+			messageLabel: 'Сообщение',
+			emojiLabel: 'Эмодзи',
+			attachLabel: 'Прикрепить изображение',
+			dictateLabel: 'Надиктовать сообщение',
+			dictateTitle: 'Голосовой ввод: речь распознаёт ваш браузер',
+			sendLabel: 'Отправить',
+			emojiCategoriesLabel: 'Категории эмодзи',
+			openChat: 'Открыть чат',
+			downloadHistory: 'Скачать историю',
+			noConnection: 'Нет соединения. Переподключаемся…',
+			viziTyping: 'Vizi печатает',
+			loadMore: 'Загрузить ещё',
+			you: 'Вы',
+			scrollToOriginal: 'Перейти к исходному сообщению',
+			closeLightbox: 'Закрыть',
+			replyToMessage: 'Ответить на сообщение',
+			readReceipt: ' · Прочитано',
+			notSent: 'Не отправлено',
+			openChatUnread: unread => `Открыть чат, новых сообщений: ${unread}`,
+			justNow: 'Только что',
+			offlineWithSchedule: schedule => `Сейчас мы не в сети. Обычно отвечаем в рабочие часы: ${schedule}`,
+			offlineNoSchedule: 'Сейчас мы не в сети.',
+			unsupportedFileType: 'Поддерживаются только картинки: JPEG, PNG, WEBP, AVIF.',
+			fileTooLarge: 'Файл слишком большой — максимум 10MB.',
+			uploadFailed: 'Не удалось загрузить файл. Попробуйте ещё раз.',
+			micNotAllowed: 'Нет доступа к микрофону. Разрешите его в настройках браузера.',
+			micNotFound: 'Микрофон не найден.',
+			micNetwork: 'Нет связи с сервисом распознавания речи.',
+			micNoSpeech: 'Речь не распознана. Попробуйте ещё раз.',
+			micLangNotSupported: 'Этот язык не поддерживается браузером.',
+			stopDictation: 'Остановить диктовку',
+			listeningPlaceholder: 'Говорите…',
+			dictationNotice: 'Речь распознаёт ваш браузер: аудио передаётся на серверы Google или Apple.',
+			recognitionFailed: 'Не удалось распознать речь.',
+			micEnableFailed: 'Не удалось включить голосовой ввод.'
+		},
+		ro: {
+			title: 'Suport Vizaje-Nica',
+			agent: 'Suport',
+			greeting: 'Salut! 👋 Cu ce vă putem ajuta?',
+			subtitle: 'Echipa noastră vă poate ajuta și ea',
+			privacyText: 'Politica de confidențialitate',
+			privacyPrefix: 'Trimițând un mesaj, sunteți de acord cu ',
+			emojiSmileys: 'Emoticoane',
+			emojiGestures: 'Gesturi',
+			emojiHearts: 'Inimi',
+			emojiObjects: 'Obiecte',
+			emojiNature: 'Mâncare și natură',
+			emojiRecent: 'Recente',
+			closeProactive: 'Închide invitația',
+			menuMore: 'Mai mult',
+			collapseChat: 'Minimizează chatul',
+			cancelReply: 'Anulează răspunsul',
+			removeFile: 'Elimină fișierul',
+			inputPlaceholder: 'Puneți o întrebare…',
+			messageLabel: 'Mesaj',
+			emojiLabel: 'Emoji',
+			attachLabel: 'Atașați o imagine',
+			dictateLabel: 'Dictați mesajul',
+			dictateTitle: 'Introducere vocală: vocea este recunoscută de browser',
+			sendLabel: 'Trimite',
+			emojiCategoriesLabel: 'Categorii de emoji',
+			openChat: 'Deschide chatul',
+			downloadHistory: 'Descarcă istoricul',
+			noConnection: 'Fără conexiune. Ne reconectăm…',
+			viziTyping: 'Vizi scrie',
+			loadMore: 'Încarcă mai multe',
+			you: 'Dvs.',
+			scrollToOriginal: 'Mergi la mesajul original',
+			closeLightbox: 'Închide',
+			replyToMessage: 'Răspunde la mesaj',
+			readReceipt: ' · Citit',
+			notSent: 'Netrimis',
+			openChatUnread: unread => `Deschide chatul, mesaje noi: ${unread}`,
+			justNow: 'Chiar acum',
+			offlineWithSchedule: schedule => `Acum suntem offline. De obicei răspundem în orele de program: ${schedule}`,
+			offlineNoSchedule: 'Acum suntem offline.',
+			unsupportedFileType: 'Sunt acceptate doar imagini: JPEG, PNG, WEBP, AVIF.',
+			fileTooLarge: 'Fișierul este prea mare — maximum 10MB.',
+			uploadFailed: 'Nu s-a putut încărca fișierul. Încercați din nou.',
+			micNotAllowed: 'Nu există acces la microfon. Permiteți-l în setările browserului.',
+			micNotFound: 'Microfonul nu a fost găsit.',
+			micNetwork: 'Nu există conexiune cu serviciul de recunoaștere vocală.',
+			micNoSpeech: 'Vorbirea nu a fost recunoscută. Încercați din nou.',
+			micLangNotSupported: 'Această limbă nu este acceptată de browser.',
+			stopDictation: 'Oprește dictarea',
+			listeningPlaceholder: 'Vorbiți…',
+			dictationNotice: 'Vocea este recunoscută de browserul dvs.: sunetul este trimis către serverele Google sau Apple.',
+			recognitionFailed: 'Vorbirea nu a putut fi recunoscută.',
+			micEnableFailed: 'Nu s-a putut activa introducerea vocală.'
+		}
+	}
+	const t = key => LOCALE[BOT_LANG][key]
+
+	// настраиваемый текст: сайт может задать его явно (с RO-вариантом через
+	// суффикс -Ro в dataset) — на RO-странице сначала берём -ro, затем обычный
+	// (RU) атрибут, и только потом — переданный запасной вариант (обычно t(...))
+	function localizedAttr(baseKey, roKey, fallback) {
+		if (BOT_LANG === 'ro') {
+			const ro = (cfg[roKey] || '').trim()
+			if (ro) return ro
+		}
+		const base = (cfg[baseKey] || '').trim()
+		return base || fallback
+	}
+
+	const TITLE = localizedAttr('title', 'titleRo', t('title'))
+	const AGENT = localizedAttr('agent', 'agentRo', t('agent'))
+	const GREETING = localizedAttr('greeting', 'greetingRo', t('greeting'))
+	const SUBTITLE = localizedAttr('subtitle', 'subtitleRo', t('subtitle'))
 	const PRIVACY_URL = (cfg.privacyUrl || '').trim()
-	const PRIVACY_TEXT = (cfg.privacyText || '').trim() || 'Политикой конфиденциальности'
+	const PRIVACY_TEXT = localizedAttr('privacyText', 'privacyTextRo', t('privacyText'))
 	const MAX_QUICK_REPLIES = 4
-	const QUICK_REPLIES = (cfg.quickReplies || '')
+	const QUICK_REPLIES = localizedAttr('quickReplies', 'quickRepliesRo', '')
 		.split(',')
 		.map(t => t.trim())
 		.filter(Boolean)
 		.slice(0, MAX_QUICK_REPLIES)
-	const PROACTIVE_MESSAGE = (cfg.proactiveMessage || '').trim()
+	const PROACTIVE_MESSAGE = localizedAttr('proactiveMessage', 'proactiveMessageRo', '')
 	const proactiveDelay = Number.parseFloat(cfg.proactiveDelay)
 	const PROACTIVE_DELAY_MS =
 		(Number.isFinite(proactiveDelay) && proactiveDelay >= 0 ? proactiveDelay : 20) * 1000
@@ -95,11 +233,11 @@
 	const MAX_INPUT_HEIGHT = 120
 	// Набор эмодзи (тот же, что в админке: vizaje-chat-admin/src/chat/emoji-data.ts)
 	const EMOJI_CATEGORIES = [
-		{ id: 'smileys', label: 'Смайлы', icon: '😀', emojis: '😀 😃 😄 😁 😆 😅 😂 🤣 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😋 😜 🤪 😎 🤓 🥳 😏 😌 😔 😢 😭 😤 😡 🥺 😱 😳 🤔 🤗 🙄 😴 🤯 😬'.split(' ') },
-		{ id: 'gestures', label: 'Жесты', icon: '👍', emojis: '👍 👎 👌 ✌️ 🤞 🤝 👏 🙌 🙏 💪 👋 🤚 ✋ 🫡 🤙 👀 ☝️ 👇 👉 👈 🤷 🙋 🤦'.split(' ') },
-		{ id: 'hearts', label: 'Сердца', icon: '❤️', emojis: '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 ❣️ 💕 💖 💗 💯 ✨ 🔥 ⭐ 🎉 🎊 🎁'.split(' ') },
-		{ id: 'objects', label: 'Предметы', icon: '📦', emojis: '✅ ❌ ❗ ❓ ⚠️ 💬 📦 🚚 📞 📧 🕐 💳 💰 🛒 🎯 🔒 🔑 📌 ✏️ 📎 🎧 📷 💡'.split(' ') },
-		{ id: 'nature', label: 'Еда и природа', icon: '☕', emojis: '☕ 🍕 🍔 🍰 🍎 🍓 🌞 🌙 🌈 🌸 🌹 🐶 🐱 🐻 🚗 ✈️ 🏠'.split(' ') }
+		{ id: 'smileys', label: t('emojiSmileys'), icon: '😀', emojis: '😀 😃 😄 😁 😆 😅 😂 🤣 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😋 😜 🤪 😎 🤓 🥳 😏 😌 😔 😢 😭 😤 😡 🥺 😱 😳 🤔 🤗 🙄 😴 🤯 😬'.split(' ') },
+		{ id: 'gestures', label: t('emojiGestures'), icon: '👍', emojis: '👍 👎 👌 ✌️ 🤞 🤝 👏 🙌 🙏 💪 👋 🤚 ✋ 🫡 🤙 👀 ☝️ 👇 👉 👈 🤷 🙋 🤦'.split(' ') },
+		{ id: 'hearts', label: t('emojiHearts'), icon: '❤️', emojis: '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 ❣️ 💕 💖 💗 💯 ✨ 🔥 ⭐ 🎉 🎊 🎁'.split(' ') },
+		{ id: 'objects', label: t('emojiObjects'), icon: '📦', emojis: '✅ ❌ ❗ ❓ ⚠️ 💬 📦 🚚 📞 📧 🕐 💳 💰 🛒 🎯 🔒 🔑 📌 ✏️ 📎 🎧 📷 💡'.split(' ') },
+		{ id: 'nature', label: t('emojiNature'), icon: '☕', emojis: '☕ 🍕 🍔 🍰 🍎 🍓 🌞 🌙 🌈 🌸 🌹 🐶 🐱 🐻 🚗 ✈️ 🏠'.split(' ') }
 	]
 	const RECENT_KEY = 'widget_emoji_recent'
 	const RECENT_MAX = 16
@@ -446,7 +584,7 @@
 		PROACTIVE_MESSAGE
 			? `<div class="proactive" role="status" hidden>
     <button class="proactive-text" type="button"></button>
-    <button class="icon-btn proactive-close" type="button" aria-label="Закрыть приглашение">${ICON_CLOSE}</button>
+    <button class="icon-btn proactive-close" type="button" aria-label="${t('closeProactive')}">${ICON_CLOSE}</button>
   </div>`
 			: ''
 	}
@@ -456,51 +594,51 @@
       <span class="avatar"><img class="avatar-img" src="${AVATAR_URL}" alt="" /></span>
       <div class="head-text"><div class="title"></div><div class="sub">${SUBTITLE}</div></div>
       <div class="menu">
-        <button class="icon-btn menu-btn" type="button" aria-label="Ещё" aria-haspopup="menu" aria-expanded="false">${ICON_MORE}</button>
+        <button class="icon-btn menu-btn" type="button" aria-label="${t('menuMore')}" aria-haspopup="menu" aria-expanded="false">${ICON_MORE}</button>
         <div class="menu-list" role="menu" hidden>
-          <button class="menu-item download" type="button" role="menuitem">${ICON_DOWNLOAD} Скачать историю</button>
+          <button class="menu-item download" type="button" role="menuitem">${ICON_DOWNLOAD} ${t('downloadHistory')}</button>
         </div>
       </div>
-      <button class="icon-btn close" type="button" aria-label="Свернуть чат">${ICON_CLOSE}</button>
+      <button class="icon-btn close" type="button" aria-label="${t('collapseChat')}">${ICON_CLOSE}</button>
     </header>
-    <div class="banner" role="status" hidden>Нет соединения. Переподключаемся…</div>
+    <div class="banner" role="status" hidden>${t('noConnection')}</div>
     <div class="offline-banner" role="status" hidden></div>
     <div class="messages" role="log" aria-live="polite"></div>
     <div class="note" role="status" hidden></div>
     <div class="reply-bar" hidden>
       <div class="reply-bar-text"><div class="reply-author"></div><div class="reply-snippet"></div></div>
-      <button class="icon-btn reply-cancel" type="button" aria-label="Отменить ответ">${ICON_CLOSE}</button>
+      <button class="icon-btn reply-cancel" type="button" aria-label="${t('cancelReply')}">${ICON_CLOSE}</button>
     </div>
     <form class="composer">
       <div class="attach-preview" hidden>
         <span class="attach-thumb-wrap"><img class="attach-thumb" alt="" /><span class="attach-spinner"></span></span>
         <span class="attach-name"></span>
-        <button class="icon-btn attach-remove" type="button" aria-label="Убрать файл">${ICON_CLOSE}</button>
+        <button class="icon-btn attach-remove" type="button" aria-label="${t('removeFile')}">${ICON_CLOSE}</button>
       </div>
       <div class="composer-box">
-        <textarea class="input" rows="1" placeholder="Задать вопрос…" aria-label="Сообщение"></textarea>
+        <textarea class="input" rows="1" placeholder="${t('inputPlaceholder')}" aria-label="${t('messageLabel')}"></textarea>
         <div class="composer-row">
           <div class="composer-icons">
-            <button class="emoji-btn" type="button" aria-label="Эмодзи" aria-expanded="false" aria-controls="emoji-panel">${ICON_SMILE}</button>
-            <button class="attach-btn" type="button" aria-label="Прикрепить изображение">${ICON_ATTACH}</button>
+            <button class="emoji-btn" type="button" aria-label="${t('emojiLabel')}" aria-expanded="false" aria-controls="emoji-panel">${ICON_SMILE}</button>
+            <button class="attach-btn" type="button" aria-label="${t('attachLabel')}">${ICON_ATTACH}</button>
             <input class="file-input" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden />
-            <button class="mic-btn" type="button" aria-label="Надиктовать сообщение" aria-pressed="false" title="Голосовой ввод: речь распознаёт ваш браузер" hidden><span class="ic-mic">${ICON_MIC}</span><span class="ic-stop">${ICON_STOP}</span></button>
+            <button class="mic-btn" type="button" aria-label="${t('dictateLabel')}" aria-pressed="false" title="${t('dictateTitle')}" hidden><span class="ic-mic">${ICON_MIC}</span><span class="ic-stop">${ICON_STOP}</span></button>
           </div>
-          <button class="send" type="submit" aria-label="Отправить" disabled>${ICON_SEND}</button>
+          <button class="send" type="submit" aria-label="${t('sendLabel')}" disabled>${ICON_SEND}</button>
         </div>
       </div>
     </form>
     <div class="emoji-panel" id="emoji-panel" hidden>
-      <div class="emoji-tabs" role="tablist" aria-label="Категории эмодзи"></div>
+      <div class="emoji-tabs" role="tablist" aria-label="${t('emojiCategoriesLabel')}"></div>
       <div class="emoji-grid" role="tabpanel"></div>
     </div>
     ${
 			PRIVACY_URL
-				? `<p class="privacy">Отправляя сообщение, вы соглашаетесь с <a href="${PRIVACY_URL.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer"></a></p>`
+				? `<p class="privacy">${t('privacyPrefix')}<a href="${PRIVACY_URL.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer"></a></p>`
 				: ''
 		}
   </section>
-  <button class="launcher" type="button" aria-label="Открыть чат" aria-expanded="false">
+  <button class="launcher" type="button" aria-label="${t('openChat')}" aria-expanded="false">
     <span class="ic-chat">${ICON_LAUNCHER}</span><span class="ic-close">${ICON_CHEVRON}</span>
     <span class="badge" hidden></span>
   </button>
@@ -592,7 +730,7 @@
 	greetingBubble.textContent = GREETING
 	const greetingMeta = document.createElement('div')
 	greetingMeta.className = 'meta'
-	greetingMeta.textContent = `${TITLE} • Только что`
+	greetingMeta.textContent = `${TITLE} • ${t('justNow')}`
 	greetingRow.append(greetingBubble, greetingMeta)
 	greeting.appendChild(greetingRow)
 	if (QUICK_REPLIES.length) {
@@ -628,7 +766,7 @@
 				<div class="vizi-slime-eye right"></div>
 				<div class="vizi-slime-shadow"></div>
 			</div>
-			<div class="vizi-typing-bubble" aria-label="Vizi печатает">
+			<div class="vizi-typing-bubble" aria-label="${t('viziTyping')}">
 				<span class="vizi-dot"></span>
 				<span class="vizi-dot"></span>
 				<span class="vizi-dot"></span>
@@ -653,7 +791,7 @@
 	const loadMoreBtn = document.createElement('button')
 	loadMoreBtn.type = 'button'
 	loadMoreBtn.className = 'load-more'
-	loadMoreBtn.textContent = 'Загрузить ещё'
+	loadMoreBtn.textContent = t('loadMore')
 	function updateLoadMore() {
 		if (hasMore) {
 			if (!loadMoreBtn.isConnected) messagesEl.prepend(loadMoreBtn)
@@ -663,14 +801,14 @@
 	}
 
 	// --- ответ на сообщение (цитата) ---------------------------------------------
-	const authorLabel = sender => (sender === 'visitor' ? 'Вы' : AGENT)
+	const authorLabel = sender => (sender === 'visitor' ? t('you') : AGENT)
 
 	function buildQuote(q) {
 		const el = document.createElement('div')
 		el.className = 'quote'
 		el.tabIndex = 0
 		el.setAttribute('role', 'button')
-		el.setAttribute('aria-label', 'Перейти к исходному сообщению')
+		el.setAttribute('aria-label', t('scrollToOriginal'))
 		const author = document.createElement('div')
 		author.className = 'quote-author'
 		author.textContent = authorLabel(q.sender)
@@ -725,7 +863,7 @@
 			lightbox = document.createElement('div')
 			lightbox.className = 'lightbox'
 			lightbox.hidden = true
-			lightbox.innerHTML = `<img alt="" /><button type="button" class="lightbox-close" aria-label="Закрыть">${ICON_CLOSE}</button>`
+			lightbox.innerHTML = `<img alt="" /><button type="button" class="lightbox-close" aria-label="${t('closeLightbox')}">${ICON_CLOSE}</button>`
 			lightbox.addEventListener('click', e => {
 				if (e.target === lightbox || e.target.closest('.lightbox-close')) closeLightbox()
 			})
@@ -774,7 +912,7 @@
 			const replyBtn = document.createElement('button')
 			replyBtn.type = 'button'
 			replyBtn.className = 'reply-btn'
-			replyBtn.setAttribute('aria-label', 'Ответить на сообщение')
+			replyBtn.setAttribute('aria-label', t('replyToMessage'))
 			replyBtn.innerHTML = ICON_REPLY
 			const line = document.createElement('div')
 			line.className = 'line'
@@ -839,7 +977,7 @@
 				lastRead = row
 			}
 		}
-		if (lastRead) lastRead.querySelector('.meta').textContent += ' · Прочитано'
+		if (lastRead) lastRead.querySelector('.meta').textContent += t('readReceipt')
 	}
 	// clientId возвращает сервер; без него (старый сервер) — самое раннее из ожидающих
 	function markFailed(clientId, reason) {
@@ -850,7 +988,7 @@
 		clearTimeout(entry.timer)
 		entry.row.classList.add('failed')
 		const meta = entry.row.querySelector('.meta')
-		meta.textContent = 'Не отправлено'
+		meta.textContent = t('notSent')
 		meta.title = reason || ''
 	}
 
@@ -860,7 +998,7 @@
 		badge.textContent = unread > 99 ? '99+' : String(unread)
 		launcher.setAttribute(
 			'aria-label',
-			unread ? `Открыть чат, новых сообщений: ${unread}` : 'Открыть чат'
+			unread ? t('openChatUnread')(unread) : t('openChat')
 		)
 	}
 	function markSeen() {
@@ -922,7 +1060,7 @@
 	function showToast(m) {
 		$('.toast-title').textContent = TITLE
 		$('.toast-text').textContent = m.text
-		$('.toast-meta').textContent = `${AGENT} · Только что`
+		$('.toast-meta').textContent = `${AGENT} · ${t('justNow')}`
 		toast.hidden = false
 		clearTimeout(toastTimer)
 		toastTimer = setTimeout(hideToast, TOAST_MS)
@@ -998,8 +1136,8 @@
 			offlineBanner.textContent = online
 				? ''
 				: scheduleSummary
-					? `Сейчас мы не в сети. Обычно отвечаем в рабочие часы: ${scheduleSummary}`
-					: 'Сейчас мы не в сети.'
+					? t('offlineWithSchedule')(scheduleSummary)
+					: t('offlineNoSchedule')
 		} catch {
 			// сбой — молчим, лучше ничего не показать, чем соврать про офлайн
 		}
@@ -1332,12 +1470,12 @@
 	async function handleFileSelect(file) {
 		if (!file) return
 		if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
-			setNote('Поддерживаются только картинки: JPEG, PNG, WEBP, AVIF.', { error: true })
+			setNote(t('unsupportedFileType'), { error: true })
 			fileInput.value = ''
 			return
 		}
 		if (file.size > MAX_ATTACHMENT_SIZE) {
-			setNote('Файл слишком большой — максимум 10MB.', { error: true })
+			setNote(t('fileTooLarge'), { error: true })
 			fileInput.value = ''
 			return
 		}
@@ -1369,7 +1507,7 @@
 			autosize()
 		} catch (e) {
 			console.error('widget upload failed', e)
-			setNote('Не удалось загрузить файл. Попробуйте ещё раз.', { error: true })
+			setNote(t('uploadFailed'), { error: true })
 			clearAttachment()
 		}
 	}
@@ -1383,12 +1521,12 @@
 
 	// --- диктовка (речь → текст, распознаёт браузер) ----------------------------
 	const DICTATION_ERRORS = {
-		'not-allowed': 'Нет доступа к микрофону. Разрешите его в настройках браузера.',
-		'service-not-allowed': 'Нет доступа к микрофону. Разрешите его в настройках браузера.',
-		'audio-capture': 'Микрофон не найден.',
-		network: 'Нет связи с сервисом распознавания речи.',
-		'no-speech': 'Речь не распознана. Попробуйте ещё раз.',
-		'language-not-supported': 'Этот язык не поддерживается браузером.'
+		'not-allowed': t('micNotAllowed'),
+		'service-not-allowed': t('micNotAllowed'),
+		'audio-capture': t('micNotFound'),
+		network: t('micNetwork'),
+		'no-speech': t('micNoSpeech'),
+		'language-not-supported': t('micLangNotSupported')
 	}
 	const NOTICE_KEY = 'widget_dictation_notice'
 	const PLACEHOLDER = input.placeholder
@@ -1406,8 +1544,8 @@
 	function setListening(on) {
 		micBtn.classList.toggle('listening', on)
 		micBtn.setAttribute('aria-pressed', String(on))
-		micBtn.setAttribute('aria-label', on ? 'Остановить диктовку' : 'Надиктовать сообщение')
-		input.placeholder = on ? 'Говорите…' : PLACEHOLDER
+		micBtn.setAttribute('aria-label', on ? t('stopDictation') : t('dictateLabel'))
+		input.placeholder = on ? t('listeningPlaceholder') : PLACEHOLDER
 	}
 	function startDictation() {
 		if (!SpeechRec || rec) return
@@ -1418,7 +1556,7 @@
 			localStorage.setItem(NOTICE_KEY, '1')
 		} catch {}
 		if (!seen) {
-			setNote('Речь распознаёт ваш браузер: аудио передаётся на серверы Google или Apple.', { ms: 8000 })
+			setNote(t('dictationNotice'), { ms: 8000 })
 		}
 		// текст до и после курсора сохраняем, надиктованное вставляем между ними
 		const from = input.selectionStart ?? input.value.length
@@ -1447,7 +1585,7 @@
 		}
 		r.onerror = e => {
 			if (rec !== r || e.error === 'aborted') return
-			setNote(DICTATION_ERRORS[e.error] || 'Не удалось распознать речь.', { error: true })
+			setNote(DICTATION_ERRORS[e.error] || t('recognitionFailed'), { error: true })
 		}
 		r.onend = () => {
 			if (rec !== r) return
@@ -1461,7 +1599,7 @@
 		} catch {
 			rec = null
 			setListening(false)
-			setNote('Не удалось включить голосовой ввод.', { error: true })
+			setNote(t('micEnableFailed'), { error: true })
 		}
 	}
 	// остановить и дождаться последних слов (кнопка «стоп»)
@@ -1498,7 +1636,7 @@
 	}
 	function renderEmoji() {
 		const categories = [
-			{ id: 'recent', label: 'Недавние', icon: '🕘', emojis: readRecent() },
+			{ id: 'recent', label: t('emojiRecent'), icon: '🕘', emojis: readRecent() },
 			...EMOJI_CATEGORIES
 		]
 		if (emojiCategory === 'recent' && !categories[0].emojis.length) emojiCategory = 'smileys'
