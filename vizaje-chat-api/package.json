@@ -1,6 +1,6 @@
 {
   "name": "vizaje-chat",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
   "devDependencies": {
@@ -18,5 +18,11 @@
     "elysia": "^1.4.30",
     "jsonwebtoken": "^9.0.3",
     "postgres": "^3.4.9"
+  },
+  "scripts": {
+    "dev": "bun --watch run src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   }
 }

@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vizaje_chat
+      POSTGRES_USER: vizaje
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vizaje -d vizaje_chat"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./vizaje-chat-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://vizaje:${DB_PASSWORD}@db:5432/vizaje_chat
+      JWT_SECRET: ${JWT_SECRET}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      TRUST_PROXY: "true"
+      PORT: 3001
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      UPLOAD_DIR: /app/uploads
+      # тот же адрес, что ADMIN_API_URL ниже (публичный URL этого API) —
+      # нужен, чтобы Telegram sendPhoto мог скачать картинку по ссылке
+      PUBLIC_API_URL: ${ADMIN_API_URL}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+      args:
+        VITE_API_URL: ${ADMIN_API_URL}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+
+volumes:
+  db_data:
+  uploads_data:

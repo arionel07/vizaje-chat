@@ -1,11 +1,17 @@
 import { Elysia, t } from 'elysia'
 import { verifyToken } from '../auth/guard'
 import { login } from '../auth/service'
+import { getClientIp } from '../chat/client-ip'
+import { allowLoginAttempt } from '../chat/rate-limit'
 
 export const authRoutes = new Elysia()
 	.post(
 		'/admin/auth/login',
-		async ({ body, set }) => {
+		async ({ body, set, request, server }) => {
+			if (!allowLoginAttempt(getClientIp({ request, server }))) {
+				set.status = 429
+				return { error: 'Too many attempts, try again later' }
+			}
 			const result = await login(body.email, body.password)
 			if (!result) {
 				set.status = 401

@@ -2,8 +2,7 @@ import { eq } from 'drizzle-orm'
 import jwt from 'jsonwebtoken'
 import { db } from '../db/client'
 import { adminUsers } from '../db/schema'
-
-const JWT_SECRET = process.env.JWT_SECRET!
+import { JWT_SECRET } from '../config'
 
 export async function createAdmin(email: string, password: string) {
 	const passwordHash = await Bun.password.hash(password)
