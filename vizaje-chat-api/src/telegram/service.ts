@@ -123,19 +123,6 @@ export async function clearTelegramKeyboard(chatId: string, messageId: number) {
 	await keyboardClearer(chatId, messageId)
 }
 
-// беседа + chatId → { channel, telegramChatId } — чтобы при ответе оператора
-// понять, нужно ли дублировать сообщение в Telegram (см. ws.routes.ts)
-export async function getConversationChannel(conversationId: number) {
-	const [row] = await db
-		.select({
-			channel: conversations.channel,
-			telegramChatId: conversations.telegramChatId
-		})
-		.from(conversations)
-		.where(eq(conversations.id, conversationId))
-	return row ?? null
-}
-
 type PhotoSender = (chatId: string, photoUrl: string, caption?: string) => Promise<unknown>
 
 // отправка картинки в Telegram по публичной ссылке (сам Bot API её скачивает) —

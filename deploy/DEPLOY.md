@@ -129,6 +129,44 @@ docker compose run --rm api bunx web-push generate-vapid-keys
 сообщение от посетителя должно приходить уведомлением, даже если вкладка
 админки не активна.
 
+## 11. Instagram (необязательно)
+
+Через Meta Graph API — Instagram-аккаунт должен быть Business/Creator и
+связан с Facebook-страницей, с которой он получает сообщения. В Meta for
+Developers создать приложение → добавить продукт Instagram → в нём раздел
+Webhooks:
+
+- **Callback URL**: `https://chat.vizaje-nica.com/instagram/webhook`
+- **Verify token**: любая случайная строка (`openssl rand -hex 24`) — та же,
+  что в `.env` как `INSTAGRAM_VERIFY_TOKEN`
+
+Прежде чем жать «Verify and save» на этом экране — задеплоить код с
+обработчиком вебхука (`docker compose up -d --build api`), иначе проверка
+не пройдёт.
+
+В `.env`, кроме `INSTAGRAM_VERIFY_TOKEN`:
+- `INSTAGRAM_APP_SECRET` — Settings → Basic приложения, подписывает каждый
+  вебхук-запрос (без него подпись не проверяется — для прода обязательно)
+- `INSTAGRAM_PAGE_ACCESS_TOKEN` — токен связанной Facebook-страницы с правами
+  `instagram_business_basic`, `instagram_business_manage_messages`; нужен для
+  отправки ответов оператора (без него входящие всё равно примутся и
+  сохранятся, просто ответить из админки не получится)
+
+После `docker compose up -d --build api` в разделе Webhooks подписаться на
+поле `messages` (galochka у `instagram_manage_messages` subscription),
+**не** подписываться на `message_echoes` — иначе собственные отправленные
+ответы будут приходить обратно как входящие сообщения (код и так их
+игнорирует по `is_echo`, но лишняя нагрузка ни к чему).
+
+Меню и путь к оператору — тот же, что в Telegram (язык → тема → опишите
+вопрос), только на quick replies вместо inline-кнопок: они не остаются
+кликабельными навсегда, Instagram сам прячет их, как только собеседник
+ответил — снимать вручную, как с Telegram, не нужно.
+
+Проверка: написать аккаунту в Direct — должно прийти меню выбора языка;
+сообщение после выбора темы должно появиться в админке с пометкой Instagram;
+ответ оператора — прийти в тот же Direct.
+
 ## Обновление после новых коммитов
 
 ```

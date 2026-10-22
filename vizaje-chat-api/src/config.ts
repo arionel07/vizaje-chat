@@ -58,3 +58,18 @@ export const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || null
 // контакт в заголовке запроса к push-серверу (требование спецификации Web Push) —
 // mailto: или https-адрес сайта, не связан с конкретным оператором
 export const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:support@vizaje-nica.com'
+
+// Instagram (через Meta Graph API) — опциональный канал, тот же принцип, что
+// у Telegram: без ключей /instagram/webhook просто ничего не отправит обратно
+export const INSTAGRAM_VERIFY_TOKEN = process.env.INSTAGRAM_VERIFY_TOKEN || null
+// App Secret из настроек Meta-приложения — подписывает каждый POST на вебхук
+// (заголовок X-Hub-Signature-256); без него /instagram/webhook принимает
+// запросы от кого угодно, кто узнает URL (в отличие от Telegram, тут нет
+// отдельного секрета для вебхука — подпись считается по App Secret)
+export const INSTAGRAM_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || null
+// Page Access Token связанной Facebook-страницы — нужен для отправки
+// сообщений через Send API (без него входящие всё равно примутся и сохранятся)
+export const INSTAGRAM_PAGE_ACCESS_TOKEN = process.env.INSTAGRAM_PAGE_ACCESS_TOKEN || null
+// версия Graph API — Meta периодически меняет текущую; переопределяем на
+// случай, если эта версия устареет раньше следующего деплоя
+export const INSTAGRAM_API_VERSION = process.env.INSTAGRAM_API_VERSION || 'v21.0'

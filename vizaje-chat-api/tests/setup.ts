@@ -26,3 +26,9 @@ process.env.PUBLIC_API_URL = 'http://test-api.local'
 process.env.VAPID_PUBLIC_KEY =
 	'BDN3Jk5rcZ25rjolGghAzSs6YlPFNhSA0RnUJnpyoN-prOocu_-tidEpJJOSiwZCkaXH3m9ogio9ui464rDdwWg'
 process.env.VAPID_PRIVATE_KEY = 'D1leeFoLkrlZfyIBbz7d1KAtyDxRpTuE7TV7tYnkDfM'
+// Instagram — не настоящие секреты; APP_SECRET нужен, чтобы проверить саму
+// проверку подписи вебхука (см. tests/instagram.test.ts), VERIFY_TOKEN — чтобы
+// проверить GET-рукопожатие при подключении вебхука
+process.env.INSTAGRAM_APP_SECRET = 'test-instagram-app-secret'
+process.env.INSTAGRAM_VERIFY_TOKEN = 'test-instagram-verify-token'
+process.env.INSTAGRAM_PAGE_ACCESS_TOKEN = 'test-instagram-page-token'

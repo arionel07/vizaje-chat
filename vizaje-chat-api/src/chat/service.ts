@@ -107,6 +107,20 @@ export async function conversationExists(conversationId: number) {
 	return !!row
 }
 
+// канал беседы + внешний ID получателя для этого канала — чтобы при ответе
+// оператора понять, куда (и нужно ли) дублировать сообщение (см. ws.routes.ts)
+export async function getConversationChannel(conversationId: number) {
+	const [row] = await db
+		.select({
+			channel: conversations.channel,
+			telegramChatId: conversations.telegramChatId,
+			instagramUserId: conversations.instagramUserId
+		})
+		.from(conversations)
+		.where(eq(conversations.id, conversationId))
+	return row ?? null
+}
+
 export const DEFAULT_MESSAGES_LIMIT = 50
 export const MAX_MESSAGES_LIMIT = 200
 

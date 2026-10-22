@@ -6,6 +6,7 @@ import { authRoutes } from './routes/auth.routes'
 import { botResponsesRoutes } from './routes/bot-responses.routes'
 import { cannedResponsesRoutes } from './routes/canned-responses.routes'
 import { conversationsRoutes } from './routes/conversations.routes'
+import { instagramRoutes } from './routes/instagram.routes'
 import { pushTokensRoutes } from './routes/push-tokens.routes'
 import { settingsRoutes } from './routes/settings.routes'
 import { telegramRoutes } from './routes/telegram.routes'
@@ -30,6 +31,7 @@ export function createApp() {
 		.use(authRoutes)
 		.use(widgetRoutes)
 		.use(telegramRoutes)
+		.use(instagramRoutes)
 		.use(conversationsRoutes)
 		.use(pushTokensRoutes)
 		.use(settingsRoutes)

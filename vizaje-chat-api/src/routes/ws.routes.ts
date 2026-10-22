@@ -6,6 +6,7 @@ import { allowVisitorMessage } from '../chat/rate-limit'
 import {
 	addMessage,
 	conversationExists,
+	getConversationChannel,
 	replyTargetExists
 } from '../chat/service'
 import {
@@ -13,7 +14,8 @@ import {
 	getOrCreateConversationId,
 	verifySessionToken
 } from '../widget/service'
-import { getConversationChannel, sendTelegramMessage, sendTelegramPhoto } from '../telegram/service'
+import { sendTelegramMessage, sendTelegramPhoto } from '../telegram/service'
+import { sendInstagramMessage, sendInstagramPhoto } from '../instagram/service'
 import { PUBLIC_API_URL } from '../config'
 import { sendExpoPush } from '../push-tokens/expo-push'
 import { getAllPushTokens } from '../push-tokens/service'
@@ -312,8 +314,8 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			ws.publish('admin:global', payload)
 			sendAck(ws, msg, clientId)
 
-			// беседа из Telegram — оператор отвечает прямо из админки, без
-			// переключения в сам Telegram; дублируем ответ туда, best-effort
+			// беседа из Telegram/Instagram — оператор отвечает прямо из админки, без
+			// переключения в сам канал; дублируем ответ туда, best-effort
 			const info = await getConversationChannel(conversationId)
 			if (info?.channel === 'telegram' && info.telegramChatId) {
 				const chatId = info.telegramChatId
@@ -331,6 +333,25 @@ export const wsRoutes = new Elysia().ws('/ws', {
 					if (text) {
 						sendTelegramMessage(chatId, text).catch(error =>
 							console.error('Failed to relay reply to Telegram:', error)
+						)
+					}
+				}
+			} else if (info?.channel === 'instagram' && info.instagramUserId) {
+				const psid = info.instagramUserId
+				if (attachment && PUBLIC_API_URL) {
+					// Graph API сам скачивает фото по ссылке — нужен публичный, не relative, URL
+					sendInstagramPhoto(psid, `${PUBLIC_API_URL}${attachment.url}`, text || undefined).catch(
+						error => console.error('Failed to relay photo to Instagram:', error)
+					)
+				} else {
+					if (attachment && !PUBLIC_API_URL) {
+						console.error(
+							'PUBLIC_API_URL не задан — картинка в Instagram не продублирована, только текст'
+						)
+					}
+					if (text) {
+						sendInstagramMessage(psid, text).catch(error =>
+							console.error('Failed to relay reply to Instagram:', error)
 						)
 					}
 				}

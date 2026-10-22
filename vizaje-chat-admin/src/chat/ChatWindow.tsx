@@ -36,6 +36,7 @@ import {
 import { API_URL } from '../lib/config'
 import { formatTime } from '../lib/format'
 import { connectAdminWs, type AdminWs } from '../lib/ws'
+import { InstagramIcon } from '../icons/InstagramIcon'
 import { CannedResponsesPanel } from './CannedResponsesPanel'
 import { EmojiPicker } from './EmojiPicker'
 import { pushRecentEmoji } from './emoji-data'
@@ -594,6 +595,12 @@ export function ChatWindow({
 								className="h-3.5 w-3.5 shrink-0 text-sky-500"
 							/>
 						)}
+						{conversation.channel === 'instagram' && (
+							<InstagramIcon
+								aria-label="Instagram"
+								className="h-3.5 w-3.5 shrink-0 text-pink-500"
+							/>
+						)}
 					</h2>
 					<p className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
 						<span
@@ -604,6 +611,7 @@ export function ChatWindow({
 						/>
 						{closed ? 'Закрыта' : 'Открыта'}
 						{conversation.channel === 'telegram' && ' · Telegram'}
+						{conversation.channel === 'instagram' && ' · Instagram'}
 					</p>
 				</div>
 				<select

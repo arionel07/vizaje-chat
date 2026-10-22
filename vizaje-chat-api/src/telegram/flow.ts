@@ -10,7 +10,7 @@ import {
 	THANKS_FORWARDED,
 	type CategoryId,
 	type Lang
-} from './menu'
+} from '../channels/menu'
 import {
 	type Button,
 	answerTelegramCallback,
@@ -21,7 +21,7 @@ import {
 	sendTelegramMessage,
 	sessionIdForChat
 } from './service'
-import { getChatState, setChatState } from './state'
+import { getChatState, setChatState } from '../channels/state'
 
 const CATEGORY_IDS: CategoryId[] = ['retail', 'app', 'site', 'other']
 
@@ -54,14 +54,14 @@ const withBack = (lang: Lang, rows: Button[][]): Button[][] => [
 ]
 
 async function showStart(chatId: string) {
-	setChatState(chatId, { step: 'entry' })
+	setChatState(sessionIdForChat(chatId), { step: 'entry' })
 	await sendTelegramButtons(chatId, 'Добро пожаловать! / Bun venit!', [
 		[{ text: '▶️ Start', data: 'start' }]
 	])
 }
 
 async function showLanguage(chatId: string) {
-	setChatState(chatId, { step: 'lang' })
+	setChatState(sessionIdForChat(chatId), { step: 'lang' })
 	await sendTelegramButtons(chatId, GREETING, [
 		[
 			{ text: '🇷🇺 Русский', data: 'lang:ru' },
@@ -71,7 +71,7 @@ async function showLanguage(chatId: string) {
 }
 
 async function showCategories(chatId: string, lang: Lang) {
-	setChatState(chatId, { step: 'category', lang })
+	setChatState(sessionIdForChat(chatId), { step: 'category', lang })
 	const rows: Button[][] = CATEGORY_IDS.map(id => [
 		{ text: CATEGORY_LABELS[id][lang], data: `cat:${id}` }
 	])
@@ -83,7 +83,7 @@ async function showCategories(chatId: string, lang: Lang) {
 }
 
 async function promptFreeText(chatId: string, lang: Lang, categoryId: CategoryId) {
-	setChatState(chatId, { step: 'support', lang, categoryId })
+	setChatState(sessionIdForChat(chatId), { step: 'support', lang, categoryId })
 	await sendTelegramButtons(chatId, ASK_TEXT_PROMPT[lang], withBack(lang, []))
 }
 
@@ -105,7 +105,7 @@ async function forwardToAdmin(
 	// не посетителя. Один раз за этот заход в режим поддержки (не на каждое
 	// сообщение) — но заново при каждом новом прохождении меню: человек мог
 	// вернуться с другой проблемой, и тема в этот раз могла смениться
-	const state = getChatState(chatId)
+	const state = getChatState(sessionIdForChat(chatId))
 	if (categoryId && !state.categoryAnnounced) {
 		const categoryMsg = await addMessage(
 			conversationId,
@@ -113,7 +113,7 @@ async function forwardToAdmin(
 			`Тема: ${CATEGORY_LABELS[categoryId].ru}`
 		)
 		publishMessage(conversationId, categoryMsg)
-		setChatState(chatId, { ...state, categoryAnnounced: true })
+		setChatState(sessionIdForChat(chatId), { ...state, categoryAnnounced: true })
 	}
 
 	const msg = await addMessage(conversationId, 'visitor', text, undefined, attachment)
@@ -132,7 +132,7 @@ export async function handleTelegramText(chatId: string, text: string) {
 		return
 	}
 
-	const state = getChatState(chatId)
+	const state = getChatState(sessionIdForChat(chatId))
 	if (state.step === 'support') {
 		await forwardToAdmin(chatId, text, state.categoryId)
 		await sendTelegramMessage(chatId, THANKS_FORWARDED[state.lang ?? 'ru'])
@@ -153,7 +153,7 @@ export async function handleTelegramPhoto(
 	caption: string | undefined,
 	explicitMimeType: string | undefined
 ) {
-	const state = getChatState(chatId)
+	const state = getChatState(sessionIdForChat(chatId))
 	if (state.step !== 'support') {
 		// вне режима поддержки — как и с текстом, просто перезапускаем меню
 		await showStart(chatId)
@@ -206,7 +206,7 @@ export async function handleTelegramCallback(
 	// снимаем клавиатуру с этого же сообщения — иначе она остаётся кликабельной
 	// вечно, и нажатие на уже пройденный экран «отматывает» состояние назад
 	if (messageId !== undefined) await clearTelegramKeyboard(chatId, messageId)
-	const state = getChatState(chatId)
+	const state = getChatState(sessionIdForChat(chatId))
 
 	if (data === 'start') return showLanguage(chatId)
 

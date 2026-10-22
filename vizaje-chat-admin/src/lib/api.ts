@@ -40,7 +40,7 @@ export async function login(email: string, password: string) {
 export type Conversation = {
 	id: number
 	sessionId: string
-	channel: 'widget' | 'telegram'
+	channel: 'widget' | 'telegram' | 'instagram'
 	status: 'open' | 'closed'
 	createdAt: string
 	visitorLastReadAt: string | null // когда посетитель видел сообщения — для «Прочитано»

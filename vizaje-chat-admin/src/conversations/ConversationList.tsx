@@ -24,6 +24,7 @@ import {
 } from '../lib/api'
 import { formatListTime, initials } from '../lib/format'
 import { connectAdminWs } from '../lib/ws'
+import { InstagramIcon } from '../icons/InstagramIcon'
 import {
 	ensureNotificationPermission,
 	playChime,
@@ -507,6 +508,12 @@ export function ConversationList({
 													<Send
 														aria-label="Telegram"
 														className="h-3.5 w-3.5 shrink-0 text-sky-500"
+													/>
+												)}
+												{c.channel === 'instagram' && (
+													<InstagramIcon
+														aria-label="Instagram"
+														className="h-3.5 w-3.5 shrink-0 text-pink-500"
 													/>
 												)}
 												{c.status === 'closed' && (
