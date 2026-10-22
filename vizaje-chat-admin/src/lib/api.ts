@@ -281,7 +281,7 @@ export async function updateSchedule(token: string, days: Schedule['days']) {
 
 // список опций виджета: добавить сезон — дописать строку сюда, компонент настроек
 // и сам виджет ничего не знают о конкретных значениях и не требуют переделки
-export const WIDGET_THEMES = ['classic', 'winter'] as const
+export const WIDGET_THEMES = ['classic', 'winter', 'halloween'] as const
 export type WidgetTheme = (typeof WIDGET_THEMES)[number]
 
 export async function fetchWidgetTheme(token: string) {

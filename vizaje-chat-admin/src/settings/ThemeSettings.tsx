@@ -11,7 +11,8 @@ import {
 // (Spring/Summer/Autumn), кроме самого ключа в WIDGET_THEMES на бэкенде и здесь
 const THEME_LABELS: Record<WidgetTheme, string> = {
 	classic: 'Classic',
-	winter: 'Winter'
+	winter: 'Winter',
+	halloween: 'Halloween'
 }
 
 // Сезонное оформление виджета на сайте (сейчас — падающие снежинки в Winter).

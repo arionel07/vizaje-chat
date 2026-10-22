@@ -32,6 +32,22 @@ describe('тема виджета: GET/PUT /admin/settings/theme', () => {
 		expect(get.body).toEqual({ theme: 'winter' })
 	})
 
+	test('PUT принимает halloween — тоже валидная тема', async () => {
+		const put = await api('/admin/settings/theme', {
+			method: 'PUT',
+			token,
+			body: { theme: 'halloween' }
+		})
+		expect(put.status).toBe(200)
+		expect(put.body).toEqual({ theme: 'halloween' })
+
+		const get = await api('/admin/settings/theme', { token })
+		expect(get.body).toEqual({ theme: 'halloween' })
+
+		// возвращаем обратно на winter — на неё опираются тесты ниже
+		await api('/admin/settings/theme', { method: 'PUT', token, body: { theme: 'winter' } })
+	})
+
 	test('PUT без токена → 401', async () => {
 		expect(
 			(await api('/admin/settings/theme', { method: 'PUT', body: { theme: 'classic' } }))

@@ -58,6 +58,8 @@
 	// база для статики (public/...) — папка, где лежит сам widget.js, не API
 	const ASSET_BASE = (script?.src || '').replace(/[^/]*$/, '')
 	const AVATAR_URL = `${ASSET_BASE}public/vizi-profili.png`
+	// сезонная тема Halloween — подменяет аватар (см. applyHalloweenTheme ниже)
+	const AVATAR_URL_HALLOWEEN = `${ASSET_BASE}public/vizi-halloween.jpg`
 	const THEME = ['light', 'dark'].includes(cfg.theme) ? cfg.theme : 'auto'
 	// data-lang — явное переопределение; без него смотрим <html lang> страницы.
 	// Так один и тот же <script> работает одинаково на ru- и ro-страницах сайта,
@@ -223,6 +225,28 @@
 	const PAGE_SIZE = 50
 	const SNOW_CHARS = ['❄', '❅', '❆']
 	const SNOW_COUNT = 8 // 6-10 снежинок, как в задаче
+	// сезонная тема «Halloween»: статичный узор за лентой сообщений (как фоновые
+	// обои в Telegram) — летучие мыши, тыквы, привидение, кот, искры; тайл 160×160,
+	// прибит к фону .messages (background-attachment не задан = "scroll": узор
+	// неподвижен, а сами сообщения прокручиваются поверх него)
+	const HALLOWEEN_PATTERN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+<defs>
+<g id="bat"><path d="M9 10 L0 3 Q2 9 6 9 Q4 11 2 12 Q6 13 9 10 Q12 13 16 12 Q14 11 12 9 Q16 9 18 3 L9 10 Z" fill="#1a1013" fill-opacity=".16"/></g>
+<g id="ghost"><path d="M7 1 Q1 1 1 7 L1 16 Q2.2 15 3.4 16 Q4.6 17 5.8 16 Q7 15 8.2 16 Q9.4 17 10.6 16 Q11.8 15 13 16 L13 7 Q13 1 7 1 Z" fill="#1a1013" fill-opacity=".12"/></g>
+<g id="pumpkin"><ellipse cx="9" cy="10" rx="8" ry="6.5" fill="#cd5f14" fill-opacity=".18"/><path d="M2 10 Q9 6 16 10 M9 10 L9 3.5" stroke="#cd5f14" stroke-opacity=".25" stroke-width="1" fill="none"/><rect x="7.6" y="0.5" width="2.8" height="3.5" rx="1" fill="#4d7c0f" fill-opacity=".25"/></g>
+<g id="cat"><path d="M11 2 L7 2 L5 7 Q2 7 2 12 Q2 16 9 16 Q16 16 16 12 Q16 7 13 7 Z M6 7 L3 3 L8 6 Z M12 7 L15 3 L10 6 Z" fill="#1a1013" fill-opacity=".16"/></g>
+<g id="spark"><path d="M3 0 L3.8 2.2 L6 3 L3.8 3.8 L3 6 L2.2 3.8 L0 3 L2.2 2.2 Z" fill="#cd5f14" fill-opacity=".25"/></g>
+</defs>
+<use href="#bat" x="10" y="8"/>
+<use href="#spark" x="44" y="16"/>
+<use href="#pumpkin" x="90" y="10"/>
+<use href="#ghost" x="124" y="46"/>
+<use href="#cat" x="18" y="88"/>
+<use href="#spark" x="60" y="108"/>
+<use href="#bat" x="116" y="104"/>
+<use href="#ghost" x="36" y="132"/>
+</svg>`
+	const HALLOWEEN_PATTERN_URL = `data:image/svg+xml,${encodeURIComponent(HALLOWEEN_PATTERN_SVG)}`
 	const ACK_TIMEOUT_MS = 10000 // подтверждение sent не пришло — перестаём отслеживать
 	const TYPING_EMIT_MS = 3000 // не чаще, чем раз в 3 с сообщаем «печатаю»
 	const TYPING_SHOW_MS = 5000 // «печатает» гаснет, если событий больше нет
@@ -555,6 +579,13 @@
   .garland { position: absolute; left: 0; right: 0; top: -1px; height: 8px; display: flex;
     justify-content: space-evenly; align-items: center; pointer-events: none; z-index: 1; }
   .garland .bulb { width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 4px currentColor; }
+
+  /* сезонная тема «Halloween»: статичный узор за лентой сообщений (не прокручивается
+     вместе с ней — background-attachment по умолчанию, как фоновые обои в Telegram),
+     оранжевый акцент на кнопке отправки и линии над полем ввода */
+  .root.halloween .messages { background-image: url("${HALLOWEEN_PATTERN_URL}"); background-repeat: repeat; background-size: 160px 160px; }
+  .root.halloween .composer { border-top-color: #cd5f14; }
+  .root.halloween .send { background: #cd5f14; color: #fff; }
 
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { .toast, .proactive, .root.open .panel, .vizi-slime, .vizi-slime-eye, .vizi-slime-shadow, .vizi-typing-bubble, .vizi-dot, .row.flash .bubble, .mic-btn.listening { animation: none; } .launcher { transition: none; } .flake { animation: none; display: none; } }
@@ -1235,9 +1266,21 @@
 				renderSnow()
 				snow.hidden = false
 				renderWinterDecor()
+			} else if (theme === 'halloween') {
+				applyHalloweenTheme()
 			}
 		} catch {
 			// сбой — тему просто не включаем, обычный вид не хуже
+		}
+	}
+
+	// узор за сообщениями и цвет кнопки/линии — чистый CSS по классу .halloween
+	// (см. стили выше); аватар подменяем явно — он вставлен как <img src="...">
+	// в разметке ещё до того, как эта функция вообще вызвана
+	function applyHalloweenTheme() {
+		rootEl.classList.add('halloween')
+		for (const img of root.querySelectorAll('.avatar-img')) {
+			img.src = AVATAR_URL_HALLOWEEN
 		}
 	}
 

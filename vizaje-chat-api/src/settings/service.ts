@@ -144,7 +144,7 @@ export function getStatus(schedule: Schedule, now = new Date()) {
 
 // сезонная тема виджета: список для будущих сезонов держим в одном месте,
 // чтобы добавить Spring/Summer/Autumn — просто дописать строку сюда
-export const WIDGET_THEMES = ['classic', 'winter'] as const
+export const WIDGET_THEMES = ['classic', 'winter', 'halloween'] as const
 export type WidgetTheme = (typeof WIDGET_THEMES)[number]
 export const DEFAULT_WIDGET_THEME: WidgetTheme = 'classic'
 
