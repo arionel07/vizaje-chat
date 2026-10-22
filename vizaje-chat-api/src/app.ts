@@ -10,6 +10,7 @@ import { pushTokensRoutes } from './routes/push-tokens.routes'
 import { settingsRoutes } from './routes/settings.routes'
 import { telegramRoutes } from './routes/telegram.routes'
 import { uploadsRoutes } from './routes/uploads.routes'
+import { webPushRoutes } from './routes/web-push.routes'
 import { widgetRoutes } from './routes/widget.routes'
 import { wsRoutes } from './routes/ws.routes'
 
@@ -36,5 +37,6 @@ export function createApp() {
 		.use(botResponsesRoutes)
 		.use(analyticsRoutes)
 		.use(uploadsRoutes)
+		.use(webPushRoutes)
 		.use(wsRoutes)
 }

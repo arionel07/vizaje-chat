@@ -483,3 +483,34 @@ export async function fetchAnalyticsOperators(token: string, from?: string, to?:
 	handleUnauthorized(res)
 	return parseOrThrow<AnalyticsOperatorStat[]>(res)
 }
+
+// Web Push — уведомления о новых сообщениях прямо в браузер/телефон,
+// даже когда вкладка админки закрыта (см. public/sw.js и notifications/webpush.ts)
+export async function fetchVapidPublicKey(token: string) {
+	const res = await fetch(`${API_URL}/admin/web-push/public-key`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	if (res.status === 404) return null // не настроено на сервере
+	return ((await parseOrThrow<{ publicKey: string }>(res)).publicKey)
+}
+
+export async function subscribeWebPush(token: string, subscription: PushSubscriptionJSON) {
+	const res = await fetch(`${API_URL}/admin/web-push/subscribe`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify(subscription)
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+}
+
+export async function unsubscribeWebPush(token: string, endpoint: string) {
+	const res = await fetch(`${API_URL}/admin/web-push/unsubscribe`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify({ endpoint })
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+}

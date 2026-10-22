@@ -123,3 +123,22 @@ export const pushTokens = pgTable(
 	},
 	t => [index('push_tokens_admin_id_idx').on(t.adminId)]
 )
+
+// Web Push-подписки браузера (админка на телефоне/десктопе, не мобильное
+// приложение — для него см. pushTokens выше). endpoint — глобально уникален,
+// выдаётся самим браузером конкретной связке "устройство + браузер + сайт";
+// p256dh/auth — ключи шифрования пуша, тоже из подписки браузера
+export const webPushSubscriptions = pgTable(
+	'web_push_subscriptions',
+	{
+		id: serial('id').primaryKey(),
+		adminId: integer('admin_id')
+			.notNull()
+			.references(() => adminUsers.id, { onDelete: 'cascade' }),
+		endpoint: text('endpoint').notNull().unique(),
+		p256dh: text('p256dh').notNull(),
+		auth: text('auth').notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull()
+	},
+	t => [index('web_push_subscriptions_admin_id_idx').on(t.adminId)]
+)

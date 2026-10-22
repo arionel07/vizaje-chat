@@ -21,3 +21,8 @@ process.env.JWT_SECRET = 'test-secret'
 process.env.UPLOAD_DIR = './uploads-test'
 // нужен, чтобы проверять relay картинок в Telegram (sendPhoto требует публичный URL)
 process.env.PUBLIC_API_URL = 'http://test-api.local'
+// тестовая пара VAPID — не настоящий секрет, нужна только чтобы sendWebPush()
+// не выходил по раннему return до инжектированного sender'а в тестах
+process.env.VAPID_PUBLIC_KEY =
+	'BDN3Jk5rcZ25rjolGghAzSs6YlPFNhSA0RnUJnpyoN-prOocu_-tidEpJJOSiwZCkaXH3m9ogio9ui464rDdwWg'
+process.env.VAPID_PRIVATE_KEY = 'D1leeFoLkrlZfyIBbz7d1KAtyDxRpTuE7TV7tYnkDfM'

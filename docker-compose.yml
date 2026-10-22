@@ -30,6 +30,9 @@ services:
       # тот же адрес, что ADMIN_API_URL ниже (публичный URL этого API) —
       # нужен, чтобы Telegram sendPhoto мог скачать картинку по ссылке
       PUBLIC_API_URL: ${ADMIN_API_URL}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
     volumes:
       - uploads_data:/app/uploads
     depends_on:

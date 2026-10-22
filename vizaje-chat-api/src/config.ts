@@ -47,3 +47,14 @@ export const ATTACHMENT_RETENTION_DAYS = Number(process.env.ATTACHMENT_RETENTION
 // Без него ответ оператора с картинкой в Telegram-беседу дублируется без
 // самой картинки, только текстом (если он есть) — см. telegram/service.ts
 export const PUBLIC_API_URL = (process.env.PUBLIC_API_URL || '').replace(/\/$/, '') || null
+
+// Web Push — push-уведомления браузеру админки (телефон/десктоп), в отличие
+// от pushTokens выше (тот — для отдельного мобильного приложения через Expo).
+// Опционально: без ключей POST /admin/web-push/subscribe просто не работает,
+// уведомления в браузер не шлются (WS и Expo push продолжают работать как есть).
+// Сгенерировать пару: bunx web-push generate-vapid-keys
+export const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || null
+export const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || null
+// контакт в заголовке запроса к push-серверу (требование спецификации Web Push) —
+// mailto: или https-адрес сайта, не связан с конкретным оператором
+export const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:support@vizaje-nica.com'

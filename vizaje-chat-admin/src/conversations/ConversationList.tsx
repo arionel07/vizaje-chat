@@ -32,6 +32,7 @@ import {
 	updateTitle
 } from '../notifications/alerts'
 import { SoundToggle } from '../notifications/SoundToggle'
+import { ensureWebPushSubscription } from '../notifications/webpush'
 import { ThemeToggle } from '../theme/ThemeToggle'
 
 const NOTIFICATION_TEXT_LIMIT = 200
@@ -137,10 +138,12 @@ export function ConversationList({
 	}, [selectedId, onSync, onSelect, conversations])
 
 	// запрашиваем разрешение на уведомления один раз при заходе в админку;
-	// если пользователь уже ответил (разрешил или отказал), повторно не спрашиваем
+	// если пользователь уже ответил (разрешил или отказал), повторно не спрашиваем.
+	// Следом — (пере)регистрируем Web Push подписку, если разрешение уже есть:
+	// это то, что приносит уведомления на телефон, даже когда вкладка закрыта
 	useEffect(() => {
-		ensureNotificationPermission()
-	}, [])
+		ensureNotificationPermission().then(() => ensureWebPushSubscription(token))
+	}, [token])
 
 	// перечитываем при каждом refreshKey — в т.ч. когда вернулись из настроек,
 	// где могли переключить «Опасная зона»
