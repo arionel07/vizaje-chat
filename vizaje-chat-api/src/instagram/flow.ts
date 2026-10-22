@@ -12,6 +12,7 @@ import {
 	type Lang
 } from '../channels/menu'
 import { getChatState, setChatState } from '../channels/state'
+import { notifyAdminsOfVisitorMessage } from '../push-tokens/notify'
 import {
 	type Button,
 	downloadInstagramFile,
@@ -93,6 +94,7 @@ async function forwardToAdmin(
 
 	const msg = await addMessage(conversationId, 'visitor', text, undefined, attachment)
 	publishMessage(conversationId, msg)
+	notifyAdminsOfVisitorMessage(conversationId, text || 'Фото')
 }
 
 export async function handleInstagramText(psid: string, text: string) {

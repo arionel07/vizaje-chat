@@ -17,10 +17,7 @@ import {
 import { sendTelegramMessage, sendTelegramPhoto } from '../telegram/service'
 import { sendInstagramMessage, sendInstagramPhoto } from '../instagram/service'
 import { PUBLIC_API_URL } from '../config'
-import { sendExpoPush } from '../push-tokens/expo-push'
-import { getAllPushTokens } from '../push-tokens/service'
-import { sendWebPush } from '../web-push/send'
-import { getAllWebPushSubscriptions } from '../web-push/service'
+import { notifyAdminsOfVisitorMessage } from '../push-tokens/notify'
 import { parseAttachmentInput } from '../uploads/service'
 
 type VisitorStore = {
@@ -258,25 +255,7 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			ws.publish('admin:global', payload)
 			sendAck(ws, msg, clientId)
 
-			// push — best-effort, не блокирует обработку сообщения
-			getAllPushTokens()
-				.then(tokens =>
-					sendExpoPush(tokens, {
-						title: `Беседа #${conversationId}`,
-						body: text,
-						data: { conversationId }
-					})
-				)
-				.catch(error => console.error('Failed to notify admins:', error))
-			getAllWebPushSubscriptions()
-				.then(subs =>
-					sendWebPush(subs, {
-						title: `Беседа #${conversationId}`,
-						body: text,
-						data: { conversationId }
-					})
-				)
-				.catch(error => console.error('Failed to send web push to admins:', error))
+			notifyAdminsOfVisitorMessage(conversationId, text)
 
 			// точное совпадение с триггером (например, клик по quick-reply кнопке) —
 			// бот отвечает сам, без участия оператора; не совпало — ждёт оператора как раньше

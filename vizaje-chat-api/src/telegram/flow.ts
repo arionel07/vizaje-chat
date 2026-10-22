@@ -22,6 +22,7 @@ import {
 	sessionIdForChat
 } from './service'
 import { getChatState, setChatState } from '../channels/state'
+import { notifyAdminsOfVisitorMessage } from '../push-tokens/notify'
 
 const CATEGORY_IDS: CategoryId[] = ['retail', 'app', 'site', 'other']
 
@@ -118,6 +119,7 @@ async function forwardToAdmin(
 
 	const msg = await addMessage(conversationId, 'visitor', text, undefined, attachment)
 	publishMessage(conversationId, msg)
+	notifyAdminsOfVisitorMessage(conversationId, text || 'Фото')
 }
 
 export async function handleTelegramText(chatId: string, text: string) {
