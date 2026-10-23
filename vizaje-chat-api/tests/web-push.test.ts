@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, test } from 'bun:test'
+import { setSchedule } from '../src/settings/service'
 import { setWebPushSender } from '../src/web-push/send'
 import { api, connectWs, makeAdmin, makeVisitor, resetDb } from './helpers'
 
@@ -7,9 +8,25 @@ let adminToken: string
 // перехватываем реальную отправку (web-push бьёт в сеть к push-серверу браузера)
 const sent: { endpoint: string; payload: string }[] = []
 
+// иначе тест зависит от времени прогона: push теперь уважает рабочий график
+// (notifyAdminsOfVisitorMessage), а дефолтный график — только будни 9-18
+const ALWAYS_ONLINE_DAY = { enabled: true, start: '00:00', end: '23:59' }
+const ALWAYS_ONLINE_SCHEDULE = {
+	days: {
+		mon: ALWAYS_ONLINE_DAY,
+		tue: ALWAYS_ONLINE_DAY,
+		wed: ALWAYS_ONLINE_DAY,
+		thu: ALWAYS_ONLINE_DAY,
+		fri: ALWAYS_ONLINE_DAY,
+		sat: ALWAYS_ONLINE_DAY,
+		sun: ALWAYS_ONLINE_DAY
+	}
+}
+
 beforeAll(async () => {
 	await resetDb()
 	adminToken = (await makeAdmin()).token
+	await setSchedule(ALWAYS_ONLINE_SCHEDULE)
 	setWebPushSender(async (subscription, payload) => {
 		sent.push({ endpoint: subscription.endpoint, payload: String(payload) })
 		return { statusCode: 201, body: '', headers: {} }

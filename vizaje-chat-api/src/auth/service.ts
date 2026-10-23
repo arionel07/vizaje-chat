@@ -23,7 +23,9 @@ export async function login(email: string, password: string) {
 		{ type: 'admin', sub: user.id, email: user.email },
 		JWT_SECRET,
 		{
-			expiresIn: '12h' // было '15m'
+			expiresIn: '30d' // было '12h' (до этого '15m') — нет refresh-токена,
+			// мобильное приложение не должно разлогинивать оператора каждые
+			// несколько часов
 		}
 	)
 	return { token }
