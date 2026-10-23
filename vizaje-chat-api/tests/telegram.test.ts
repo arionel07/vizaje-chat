@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/client'
 import { conversations } from '../src/db/schema'
+import { DAY_KEYS, DEFAULT_SCHEDULE, setSchedule } from '../src/settings/service'
 import {
 	setTelegramFileDownloader,
 	setTelegramKeyboardClearer,
@@ -266,6 +267,29 @@ describe('Telegram-бот: свободный текст после выбора
 			.from(conversations)
 			.where(eq(conversations.telegramChatId, String(chatId)))
 		expect(rows).toHaveLength(1)
+	})
+
+	test('вне рабочего графика — вместо благодарности часы работы, один раз за заход', async () => {
+		const chatId = 2007
+		// график выключен целиком — isOnlineAt(...) всегда false, независимо от времени прогона теста
+		await setSchedule({
+			days: Object.fromEntries(
+				DAY_KEYS.map(k => [k, { enabled: false, start: '09:00', end: '18:00' }])
+			)
+		})
+		try {
+			await api('/telegram/webhook', callback(chatId, 'start'))
+			await api('/telegram/webhook', callback(chatId, 'lang:ru'))
+			await api('/telegram/webhook', callback(chatId, 'cat:app'))
+			await api('/telegram/webhook', message(chatId, 'первое вне графика'))
+			expect(texts.at(-1)?.text).toBe('Спасибо за сообщение! Сейчас мы не в сети.')
+
+			// второе сообщение в том же заходе — снова обычная благодарность, не повтор часов
+			await api('/telegram/webhook', message(chatId, 'второе вне графика'))
+			expect(texts.at(-1)?.text).toMatch(/^Спасибо! Передал оператору/)
+		} finally {
+			await setSchedule(DEFAULT_SCHEDULE)
+		}
 	})
 
 	test('ответ оператора из админки дублируется в тот же чат Telegram', async () => {

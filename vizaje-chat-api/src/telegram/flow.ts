@@ -8,9 +8,11 @@ import {
 	CATEGORY_LABELS,
 	GREETING,
 	THANKS_FORWARDED,
+	offlineReplyText,
 	type CategoryId,
 	type Lang
 } from '../channels/menu'
+import { getSchedule, isOnlineAt, summarizeSchedule } from '../settings/service'
 import {
 	type Button,
 	answerTelegramCallback,
@@ -122,6 +124,21 @@ async function forwardToAdmin(
 	notifyAdminsOfVisitorMessage(conversationId, text || 'Фото')
 }
 
+// «Спасибо, передал оператору» — но только если сообщение пришло в рабочее
+// время; вне графика — вместо этого сообщаем часы работы (один раз за заход
+// в поддержку, firstInPass — тот же момент, что и системное «Тема: X» в
+// forwardToAdmin, см. выше), чтобы не повторять это на каждое сообщение подряд
+async function sendForwardedReply(chatId: string, lang: Lang, firstInPass: boolean) {
+	if (firstInPass) {
+		const schedule = await getSchedule()
+		if (!isOnlineAt(schedule, new Date())) {
+			await sendTelegramMessage(chatId, offlineReplyText(lang, summarizeSchedule(schedule)))
+			return
+		}
+	}
+	await sendTelegramMessage(chatId, THANKS_FORWARDED[lang])
+}
+
 export async function handleTelegramText(chatId: string, text: string) {
 	// /start — всегда сброс меню, даже если уже в режиме «передано оператору».
 	// Раньше это не проверялось отдельно от остального текста, и набранный
@@ -136,8 +153,9 @@ export async function handleTelegramText(chatId: string, text: string) {
 
 	const state = getChatState(sessionIdForChat(chatId))
 	if (state.step === 'support') {
+		const firstInPass = !state.categoryAnnounced
 		await forwardToAdmin(chatId, text, state.categoryId)
-		await sendTelegramMessage(chatId, THANKS_FORWARDED[state.lang ?? 'ru'])
+		await sendForwardedReply(chatId, state.lang ?? 'ru', firstInPass)
 		return
 	}
 	// любой текст вне «живого» общения с оператором —
@@ -188,13 +206,14 @@ export async function handleTelegramPhoto(
 		return
 	}
 
+	const firstInPass = !state.categoryAnnounced
 	await forwardToAdmin(chatId, (caption ?? '').trim(), state.categoryId, {
 		url: result.upload.url,
 		type: result.upload.type,
 		name: result.upload.name,
 		size: result.upload.size
 	})
-	await sendTelegramMessage(chatId, THANKS_FORWARDED[lang])
+	await sendForwardedReply(chatId, lang, firstInPass)
 }
 
 export async function handleTelegramCallback(
