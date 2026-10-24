@@ -2,8 +2,7 @@ import { eq } from 'drizzle-orm'
 import jwt from 'jsonwebtoken'
 import { db } from '../db/client'
 import { adminUsers } from '../db/schema'
-
-const JWT_SECRET = process.env.JWT_SECRET!
+import { JWT_SECRET } from '../config'
 
 export async function createAdmin(email: string, password: string) {
 	const passwordHash = await Bun.password.hash(password)
@@ -24,7 +23,9 @@ export async function login(email: string, password: string) {
 		{ type: 'admin', sub: user.id, email: user.email },
 		JWT_SECRET,
 		{
-			expiresIn: '12h' // было '15m'
+			expiresIn: '30d' // было '12h' (до этого '15m') — нет refresh-токена,
+			// мобильное приложение не должно разлогинивать оператора каждые
+			// несколько часов
 		}
 	)
 	return { token }
