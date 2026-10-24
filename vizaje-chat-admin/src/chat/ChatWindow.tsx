@@ -131,6 +131,9 @@ export function ChatWindow({
 	const [loadingMore, setLoadingMore] = useState(false)
 	const [toggling, setToggling] = useState(false)
 	const [capturingAi, setCapturingAi] = useState(false)
+	const [aiCopied, setAiCopied] = useState(false)
+	const aiCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+	useEffect(() => () => clearTimeout(aiCopiedTimerRef.current), [])
 	const [assigning, setAssigning] = useState(false)
 	const [exporting, setExporting] = useState(false)
 	const [deleteEnabled, setDeleteEnabled] = useState(false)
@@ -152,6 +155,10 @@ export function ChatWindow({
 	const [reactionPickerRect, setReactionPickerRect] = useState<DOMRect | null>(null)
 	const [pendingAttachment, setPendingAttachment] = useState<UploadedAttachment | null>(null)
 	const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null)
+	// перетаскивание файла в окно чата — дропнуть можно куда угодно в беседе,
+	// не только на поле ввода; счётчик, не bool — dragenter/dragleave
+	// срабатывают на каждом дочернем элементе, одного bool не хватит без мерцания
+	const [dragDepth, setDragDepth] = useState(0)
 	const [uploadingAttachment, setUploadingAttachment] = useState(false)
 	const [attachmentError, setAttachmentError] = useState<string | null>(null)
 	const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
@@ -601,9 +608,10 @@ export function ChatWindow({
 	}
 
 	// «Спросить ИИ» — только ПК: без платного API, на своём аккаунте оператора.
-	// Снимает скриншот видимой истории беседы, копирует в буфер обмена и
-	// открывает chatgpt.com в новой вкладке — вставить (Ctrl+V) и задать вопрос
-	// оператор уже делает сам: вставить в чужой сайт программно нельзя (cross-origin)
+	// Снимает скриншот видимой истории беседы и копирует в буфер обмена —
+	// вставить (Ctrl+V) куда угодно (ChatGPT, заметки и т.п.) оператор решает
+	// сам; вкладку не открываем сами — раньше открывали chatgpt.com
+	// автоматически, но это лишнее: не каждый раз нужен именно ChatGPT
 	async function askAi() {
 		if (capturingAi || !listRef.current) return
 		setCapturingAi(true)
@@ -620,7 +628,11 @@ export function ChatWindow({
 			)
 			if (!blob) throw new Error('canvas.toBlob failed')
 			await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-			window.open('https://chatgpt.com/', '_blank', 'noopener,noreferrer')
+			// визуальное подтверждение вместо открытия вкладки — вставлять (Ctrl+V)
+			// куда угодно (ChatGPT, заметки и т.п.) оператор решает сам
+			setAiCopied(true)
+			clearTimeout(aiCopiedTimerRef.current)
+			aiCopiedTimerRef.current = setTimeout(() => setAiCopied(false), 2000)
 		} catch {
 			alert(
 				'Не удалось скопировать скриншот беседы в буфер обмена. Попробуйте ещё раз или сделайте скриншот вручную.'
@@ -693,7 +705,31 @@ export function ChatWindow({
 	}
 
 	return (
-		<div className="flex h-full min-h-0 flex-col">
+		<div
+			className="relative flex h-full min-h-0 flex-col"
+			onDragEnter={e => {
+				if (!e.dataTransfer.types.includes('Files')) return
+				e.preventDefault()
+				setDragDepth(d => d + 1)
+			}}
+			onDragOver={e => {
+				if (!e.dataTransfer.types.includes('Files')) return
+				e.preventDefault()
+			}}
+			onDragLeave={() => setDragDepth(d => Math.max(0, d - 1))}
+			onDrop={e => {
+				e.preventDefault()
+				setDragDepth(0)
+				handleFileSelect(e.dataTransfer.files[0])
+			}}
+		>
+			{dragDepth > 0 && (
+				<div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center border-4 border-dashed border-zinc-900 bg-white/90 dark:border-zinc-100 dark:bg-zinc-900/90">
+					<p className="text-base font-medium text-zinc-900 dark:text-zinc-100">
+						Отпустите, чтобы прикрепить изображение
+					</p>
+				</div>
+			)}
 			<header className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-2 py-3 dark:border-zinc-800 md:px-4">
 				<button
 					type="button"
@@ -740,11 +776,19 @@ export function ChatWindow({
 						type="button"
 						onClick={askAi}
 						disabled={capturingAi}
-						aria-label="Спросить ИИ"
-						title="Скопировать скриншот беседы в буфер обмена и открыть ChatGPT в новой вкладке"
-						className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-transparent text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
+						aria-label="Спросить ИИ — скопировать скриншот беседы"
+						title="Скопировать скриншот беседы в буфер обмена (вставить можно куда угодно, Ctrl+V)"
+						className={`flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-zinc-300/30 ${
+							aiCopied
+								? 'border-emerald-300 bg-emerald-50 text-emerald-600 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-400'
+								: 'border-zinc-300 bg-transparent text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800'
+						}`}
 					>
-						<Sparkles aria-hidden="true" className="h-4 w-4" />
+						{aiCopied ? (
+							<Check aria-hidden="true" className="h-4 w-4" />
+						) : (
+							<Sparkles aria-hidden="true" className="h-4 w-4" />
+						)}
 					</button>
 					<select
 						value={conversation.assigneeId ?? ''}
