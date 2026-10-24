@@ -12,6 +12,7 @@ import {
 	RotateCcw,
 	Send,
 	Smile,
+	Sparkles,
 	Square,
 	Trash2,
 	User,
@@ -129,6 +130,7 @@ export function ChatWindow({
 	const [hasMore, setHasMore] = useState(false)
 	const [loadingMore, setLoadingMore] = useState(false)
 	const [toggling, setToggling] = useState(false)
+	const [capturingAi, setCapturingAi] = useState(false)
 	const [assigning, setAssigning] = useState(false)
 	const [exporting, setExporting] = useState(false)
 	const [deleteEnabled, setDeleteEnabled] = useState(false)
@@ -598,6 +600,36 @@ export function ChatWindow({
 		onActivityRef.current?.()
 	}
 
+	// «Спросить ИИ» — только ПК: без платного API, на своём аккаунте оператора.
+	// Снимает скриншот видимой истории беседы, копирует в буфер обмена и
+	// открывает chatgpt.com в новой вкладке — вставить (Ctrl+V) и задать вопрос
+	// оператор уже делает сам: вставить в чужой сайт программно нельзя (cross-origin)
+	async function askAi() {
+		if (capturingAi || !listRef.current) return
+		setCapturingAi(true)
+		try {
+			// тяжёлая библиотека (~200KB), только для этой кнопки — не тащим её
+			// в основной бандл, подгружаем по клику
+			const { default: html2canvas } = await import('html2canvas')
+			const dark = document.documentElement.classList.contains('dark')
+			const canvas = await html2canvas(listRef.current, {
+				backgroundColor: dark ? '#18181b' : '#ffffff'
+			})
+			const blob: Blob | null = await new Promise(resolve =>
+				canvas.toBlob(resolve, 'image/png')
+			)
+			if (!blob) throw new Error('canvas.toBlob failed')
+			await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+			window.open('https://chatgpt.com/', '_blank', 'noopener,noreferrer')
+		} catch {
+			alert(
+				'Не удалось скопировать скриншот беседы в буфер обмена. Попробуйте ещё раз или сделайте скриншот вручную.'
+			)
+		} finally {
+			setCapturingAi(false)
+		}
+	}
+
 	async function toggleStatus() {
 		if (toggling) return
 		const next = closed ? 'open' : 'closed'
@@ -704,6 +736,16 @@ export function ChatWindow({
 				</div>
 				{/* ПК — как и было, все действия видны сразу в хедере */}
 				<div className="hidden shrink-0 items-center gap-2 md:flex">
+					<button
+						type="button"
+						onClick={askAi}
+						disabled={capturingAi}
+						aria-label="Спросить ИИ"
+						title="Скопировать скриншот беседы в буфер обмена и открыть ChatGPT в новой вкладке"
+						className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-transparent text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
+					>
+						<Sparkles aria-hidden="true" className="h-4 w-4" />
+					</button>
 					<select
 						value={conversation.assigneeId ?? ''}
 						onChange={e => handleAssign(e.target.value)}
@@ -1098,7 +1140,51 @@ export function ChatWindow({
 					hidden
 					onChange={e => handleFileSelect(e.target.files?.[0])}
 				/>
-				<div className="relative shrink-0">
+				{/* ПК — как и было, три отдельные кнопки в ряд */}
+				<div className="hidden shrink-0 items-center gap-1 md:flex">
+					<button
+						type="button"
+						onClick={() => {
+							setEmojiOpen(o => !o)
+							setCannedOpen(false)
+						}}
+						aria-label="Эмодзи"
+						aria-expanded={emojiOpen}
+						aria-controls="emoji-panel"
+						className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-300/30 ${
+							emojiOpen ? 'bg-zinc-100 dark:bg-zinc-800' : 'bg-transparent'
+						}`}
+					>
+						<Smile aria-hidden="true" className="h-5 w-5" />
+					</button>
+					<button
+						type="button"
+						onClick={() => fileInputRef.current?.click()}
+						aria-label="Прикрепить изображение"
+						title="Прикрепить изображение"
+						className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 bg-transparent text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-300/30"
+					>
+						<Paperclip aria-hidden="true" className="h-5 w-5" />
+					</button>
+					<button
+						type="button"
+						onClick={() => {
+							setCannedOpen(o => !o)
+							setEmojiOpen(false)
+						}}
+						aria-label="Шаблоны ответов"
+						aria-expanded={cannedOpen}
+						aria-controls="canned-panel"
+						title="Шаблоны ответов"
+						className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-300/30 ${
+							cannedOpen ? 'bg-zinc-100 dark:bg-zinc-800' : 'bg-transparent'
+						}`}
+					>
+						<MessageSquareText aria-hidden="true" className="h-5 w-5" />
+					</button>
+				</div>
+				{/* телефон — те же три действия за одной кнопкой «⋮», как в Telegram */}
+				<div className="relative shrink-0 md:hidden">
 					<button
 						type="button"
 						onClick={() => setComposerMenuOpen(o => !o)}
