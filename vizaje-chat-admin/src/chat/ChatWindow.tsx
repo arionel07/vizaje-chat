@@ -156,9 +156,21 @@ export function ChatWindow({
 	const [pendingAttachment, setPendingAttachment] = useState<UploadedAttachment | null>(null)
 	const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null)
 	// перетаскивание файла в окно чата — дропнуть можно куда угодно в беседе,
-	// не только на поле ввода; счётчик, не bool — dragenter/dragleave
-	// срабатывают на каждом дочернем элементе, одного bool не хватит без мерцания
-	const [dragDepth, setDragDepth] = useState(0)
+	// не только на поле ввода
+	const [isDraggingFile, setIsDraggingFile] = useState(false)
+	// подстраховка: если по какой-то причине наш onDrop/onDragLeave не
+	// сработал (например, drop пришёлся на элемент, который как раз в этот
+	// момент пересоздался из-за ререндера) — оверлей всё равно не залипнет
+	// до перезагрузки страницы
+	useEffect(() => {
+		const reset = () => setIsDraggingFile(false)
+		window.addEventListener('drop', reset)
+		window.addEventListener('dragend', reset)
+		return () => {
+			window.removeEventListener('drop', reset)
+			window.removeEventListener('dragend', reset)
+		}
+	}, [])
 	const [uploadingAttachment, setUploadingAttachment] = useState(false)
 	const [attachmentError, setAttachmentError] = useState<string | null>(null)
 	const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
@@ -710,20 +722,29 @@ export function ChatWindow({
 			onDragEnter={e => {
 				if (!e.dataTransfer.types.includes('Files')) return
 				e.preventDefault()
-				setDragDepth(d => d + 1)
+				setIsDraggingFile(true)
 			}}
 			onDragOver={e => {
 				if (!e.dataTransfer.types.includes('Files')) return
 				e.preventDefault()
 			}}
-			onDragLeave={() => setDragDepth(d => Math.max(0, d - 1))}
+			onDragLeave={e => {
+				// dragenter/dragleave всплывают с каждого дочернего элемента — leave
+				// с одного ребёнка при переходе на другого не значит, что покинули
+				// весь контейнер. relatedTarget — куда уходит курсор; если он всё
+				// ещё внутри текущего элемента, это не настоящий уход
+				if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) {
+					return
+				}
+				setIsDraggingFile(false)
+			}}
 			onDrop={e => {
 				e.preventDefault()
-				setDragDepth(0)
+				setIsDraggingFile(false)
 				handleFileSelect(e.dataTransfer.files[0])
 			}}
 		>
-			{dragDepth > 0 && (
+			{isDraggingFile && (
 				<div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center border-4 border-dashed border-zinc-900 bg-white/90 dark:border-zinc-100 dark:bg-zinc-900/90">
 					<p className="text-base font-medium text-zinc-900 dark:text-zinc-100">
 						Отпустите, чтобы прикрепить изображение
