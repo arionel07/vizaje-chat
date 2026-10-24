@@ -18,9 +18,11 @@ import {
 	fetchConversationDeleteEnabled,
 	fetchConversations,
 	fetchCounts,
+	fetchSchedule,
 	type Conversation,
 	type ConversationCounts,
-	type ConversationFilter
+	type ConversationFilter,
+	type Schedule
 } from '../lib/api'
 import { formatListTime, initials } from '../lib/format'
 import { connectAdminWs } from '../lib/ws'
@@ -32,6 +34,7 @@ import {
 	updateFaviconBadge,
 	updateTitle
 } from '../notifications/alerts'
+import { isWithinSchedule } from '../notifications/schedule'
 import { SoundToggle } from '../notifications/SoundToggle'
 import { ensureWebPushSubscription } from '../notifications/webpush'
 import { ThemeToggle } from '../theme/ThemeToggle'
@@ -131,6 +134,9 @@ export function ConversationList({
 	const onSyncRef = useRef(onSync)
 	const onSelectRef = useRef(onSelect)
 	const conversationsRef = useRef(conversations)
+	// рабочий график — только для звука уведомлений (см. ниже); null, пока не
+	// загрузился, тогда звук играет как раньше, без ограничения по времени
+	const scheduleRef = useRef<Schedule | null>(null)
 	useEffect(() => {
 		selectedIdRef.current = selectedId
 		onSyncRef.current = onSync
@@ -152,6 +158,16 @@ export function ConversationList({
 		fetchConversationDeleteEnabled(token)
 			.then(setDeleteEnabled)
 			.catch(() => setDeleteEnabled(false))
+	}, [token, refreshKey])
+
+	// график — в ref, не в state: меняется редко, перерисовывать список из-за
+	// него незачем, нужен только в момент звукового сигнала (handleWsEvent)
+	useEffect(() => {
+		fetchSchedule(token)
+			.then(s => {
+				scheduleRef.current = s
+			})
+			.catch(() => {})
 	}, [token, refreshKey])
 
 	async function handleDelete(id: number) {
@@ -293,9 +309,11 @@ export function ConversationList({
 			if (msg.type === 'sent' || msg.type === 'error') return
 			if (msg.sender === 'visitor' && msg.conversationId) {
 				setTyping(msg.conversationId, false)
-				// звук — всегда (можно выключить кнопкой), системное уведомление — только
+				// звук — в рабочее время по графику (вне графика — тихо, как и push,
+				// см. notifyAdminsOfVisitorMessage на бэкенде); можно выключить и
+				// вручную кнопкой независимо от графика. Системное уведомление — только
 				// когда вкладка неактивна, иначе оператор и так видит сообщение на экране
-				playChime()
+				if (!scheduleRef.current || isWithinSchedule(scheduleRef.current)) playChime()
 				if (document.hidden) {
 					const conversationId = msg.conversationId
 					showBrowserNotification(

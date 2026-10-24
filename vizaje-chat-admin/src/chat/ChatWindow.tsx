@@ -6,6 +6,7 @@ import {
 	Lock,
 	MessageSquareText,
 	Mic,
+	MoreVertical,
 	Paperclip,
 	Reply,
 	RotateCcw,
@@ -108,6 +109,9 @@ export function ChatWindow({
 	const [replyTarget, setReplyTarget] = useState<ReplyTo | null>(null)
 	const [emojiOpen, setEmojiOpen] = useState(false)
 	const [cannedOpen, setCannedOpen] = useState(false)
+	// на телефоне вторичные действия хедера (назначить/скачать/удалить/закрыть)
+	// спрятаны за одной кнопкой «⋮», как в Telegram — на десктопе не используется
+	const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
 	const [pendingAttachment, setPendingAttachment] = useState<UploadedAttachment | null>(null)
 	const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null)
 	const [uploadingAttachment, setUploadingAttachment] = useState(false)
@@ -614,56 +618,145 @@ export function ChatWindow({
 						{conversation.channel === 'instagram' && ' · Instagram'}
 					</p>
 				</div>
-				<select
-					value={conversation.assigneeId ?? ''}
-					onChange={e => handleAssign(e.target.value)}
-					disabled={assigning}
-					aria-label="Назначить оператора"
-					title="Назначить оператора"
-					className="h-10 shrink-0 cursor-pointer rounded-lg border border-zinc-300 bg-transparent px-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
-				>
-					<option value="">Не назначено</option>
-					{operators.map(o => (
-						<option key={o.id} value={o.id}>
-							{o.email}
-						</option>
-					))}
-				</select>
-				<button
-					type="button"
-					onClick={handleExport}
-					disabled={exporting}
-					aria-label="Скачать историю переписки"
-					title="Скачать историю переписки"
-					className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-transparent text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
-				>
-					<Download aria-hidden="true" className="h-4 w-4" />
-				</button>
-				{deleteEnabled && (
+				{/* ПК — как и было, все действия видны сразу в хедере */}
+				<div className="hidden shrink-0 items-center gap-2 md:flex">
+					<select
+						value={conversation.assigneeId ?? ''}
+						onChange={e => handleAssign(e.target.value)}
+						disabled={assigning}
+						aria-label="Назначить оператора"
+						title="Назначить оператора"
+						className="h-10 shrink-0 cursor-pointer rounded-lg border border-zinc-300 bg-transparent px-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
+					>
+						<option value="">Не назначено</option>
+						{operators.map(o => (
+							<option key={o.id} value={o.id}>
+								{o.email}
+							</option>
+						))}
+					</select>
 					<button
 						type="button"
-						onClick={handleDelete}
-						disabled={deleting}
-						aria-label="Удалить беседу"
-						title="Удалить беседу"
-						className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-transparent text-zinc-700 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:border-red-500/40 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+						onClick={handleExport}
+						disabled={exporting}
+						aria-label="Скачать историю переписки"
+						title="Скачать историю переписки"
+						className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-transparent text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
 					>
-						<Trash2 aria-hidden="true" className="h-4 w-4" />
+						<Download aria-hidden="true" className="h-4 w-4" />
 					</button>
-				)}
-				<button
-					type="button"
-					onClick={toggleStatus}
-					disabled={toggling}
-					className="flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-300 bg-transparent px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
-				>
-					{closed ? (
-						<RotateCcw aria-hidden="true" className="h-4 w-4" />
-					) : (
-						<Check aria-hidden="true" className="h-4 w-4" />
+					{deleteEnabled && (
+						<button
+							type="button"
+							onClick={handleDelete}
+							disabled={deleting}
+							aria-label="Удалить беседу"
+							title="Удалить беседу"
+							className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-zinc-300 bg-transparent text-zinc-700 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:border-red-500/40 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+						>
+							<Trash2 aria-hidden="true" className="h-4 w-4" />
+						</button>
 					)}
-					{closed ? 'Открыть' : 'Закрыть'}
-				</button>
+					<button
+						type="button"
+						onClick={toggleStatus}
+						disabled={toggling}
+						className="flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-300 bg-transparent px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30"
+					>
+						{closed ? (
+							<RotateCcw aria-hidden="true" className="h-4 w-4" />
+						) : (
+							<Check aria-hidden="true" className="h-4 w-4" />
+						)}
+						{closed ? 'Открыть' : 'Закрыть'}
+					</button>
+				</div>
+				{/* телефон — те же действия за одной кнопкой «⋮», как в Telegram:
+				    в хедере остаётся только имя/статус беседы, без тесноты */}
+				<div className="relative shrink-0 md:hidden">
+					<button
+						type="button"
+						onClick={() => setHeaderMenuOpen(v => !v)}
+						aria-label="Действия с беседой"
+						aria-expanded={headerMenuOpen}
+						className={`flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-300/30 ${
+							headerMenuOpen ? 'bg-zinc-100 dark:bg-zinc-800' : 'bg-transparent'
+						}`}
+					>
+						<MoreVertical aria-hidden="true" className="h-5 w-5" />
+					</button>
+					{headerMenuOpen && (
+						<>
+							<div
+								className="fixed inset-0 z-40"
+								onClick={() => setHeaderMenuOpen(false)}
+							/>
+							<div className="absolute right-0 top-12 z-50 w-56 rounded-lg border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+								<label className="block px-1 pb-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+									Назначить оператора
+								</label>
+								<select
+									value={conversation.assigneeId ?? ''}
+									onChange={e => {
+										handleAssign(e.target.value)
+										setHeaderMenuOpen(false)
+									}}
+									disabled={assigning}
+									className="mb-1 h-10 w-full cursor-pointer rounded-lg border border-zinc-300 bg-transparent px-2 text-sm font-medium text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+								>
+									<option value="">Не назначено</option>
+									{operators.map(o => (
+										<option key={o.id} value={o.id}>
+											{o.email}
+										</option>
+									))}
+								</select>
+								<button
+									type="button"
+									onClick={() => {
+										handleExport()
+										setHeaderMenuOpen(false)
+									}}
+									disabled={exporting}
+									className="flex h-10 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-200 dark:hover:bg-zinc-800"
+								>
+									<Download aria-hidden="true" className="h-4 w-4" />
+									Скачать историю
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										toggleStatus()
+										setHeaderMenuOpen(false)
+									}}
+									disabled={toggling}
+									className="flex h-10 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-200 dark:hover:bg-zinc-800"
+								>
+									{closed ? (
+										<RotateCcw aria-hidden="true" className="h-4 w-4" />
+									) : (
+										<Check aria-hidden="true" className="h-4 w-4" />
+									)}
+									{closed ? 'Открыть беседу' : 'Закрыть беседу'}
+								</button>
+								{deleteEnabled && (
+									<button
+										type="button"
+										onClick={() => {
+											handleDelete()
+											setHeaderMenuOpen(false)
+										}}
+										disabled={deleting}
+										className="flex h-10 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-500/10"
+									>
+										<Trash2 aria-hidden="true" className="h-4 w-4" />
+										Удалить беседу
+									</button>
+								)}
+							</div>
+						</>
+					)}
+				</div>
 			</header>
 
 			<div
