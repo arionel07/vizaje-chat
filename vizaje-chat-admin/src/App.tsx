@@ -1,4 +1,4 @@
-import { MessageSquareText } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MessageSquareText } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { LoginForm } from './auth/LoginForm'
 import { ChatWindow } from './chat/ChatWindow'
@@ -32,6 +32,24 @@ function App() {
 	const [screen, setScreen] = useState<Screen>('chat')
 	// свой id — чтобы в чате понимать, какая из реакций на сообщении своя
 	const [meId, setMeId] = useState<number | null>(null)
+	// список бесед можно свернуть на ПК (больше места под чат); на телефоне
+	// не используется — там список и так отдельный экран, своя логика showMain
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+		try {
+			return localStorage.getItem('admin_sidebar_collapsed') === '1'
+		} catch {
+			return false
+		}
+	})
+	function toggleSidebar() {
+		setSidebarCollapsed(prev => {
+			const next = !prev
+			try {
+				localStorage.setItem('admin_sidebar_collapsed', next ? '1' : '0')
+			} catch {}
+			return next
+		})
+	}
 
 	// список для дропдауна «Назначить» в чате; меняется редко — грузим один раз на сессию
 	useEffect(() => {
@@ -78,7 +96,7 @@ function App() {
 	return (
 		<div className="flex h-dvh md:gap-3 md:p-3">
 			<aside
-				className={`${panelClass} ${showMain ? 'hidden md:flex' : 'flex'} w-full md:w-[360px] md:shrink-0`}
+				className={`${panelClass} ${showMain ? 'hidden' : 'flex'} ${sidebarCollapsed ? 'md:hidden' : 'md:flex'} w-full md:w-[360px] md:shrink-0`}
 			>
 				<ConversationList
 					token={token}
@@ -100,6 +118,22 @@ function App() {
 					}}
 				/>
 			</aside>
+			{/* «ручка» сворачивания списка бесед — только ПК; сидит между панелями,
+			    не перекрывает содержимое ни одной из них (в отличие от плавающей
+			    кнопки поверх шапки чата) */}
+			<button
+				type="button"
+				onClick={toggleSidebar}
+				aria-label={sidebarCollapsed ? 'Показать список бесед' : 'Скрыть список бесед'}
+				title={sidebarCollapsed ? 'Показать список бесед' : 'Скрыть список бесед'}
+				className="hidden w-4 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-300 transition-colors hover:bg-zinc-200/60 hover:text-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 md:flex dark:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 dark:focus-visible:ring-zinc-300/30"
+			>
+				{sidebarCollapsed ? (
+					<ChevronRight aria-hidden="true" className="h-4 w-4" />
+				) : (
+					<ChevronLeft aria-hidden="true" className="h-4 w-4" />
+				)}
+			</button>
 			<main className={`${panelClass} ${showMain ? 'flex' : 'hidden md:flex'} flex-1`}>
 				{screen === 'settings' ? (
 					<SettingsPanel
