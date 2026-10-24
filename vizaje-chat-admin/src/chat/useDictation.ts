@@ -45,7 +45,7 @@ export function useDictation({
 	setValue,
 	onText
 }: {
-	inputRef: React.RefObject<HTMLInputElement | null>
+	inputRef: React.RefObject<HTMLTextAreaElement | null>
 	setValue: (value: string) => void
 	onText?: (value: string) => void // например, «печатает» собеседнику
 }) {

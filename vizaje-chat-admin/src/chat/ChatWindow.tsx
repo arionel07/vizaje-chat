@@ -73,6 +73,9 @@ const QUOTE_LENGTH = 200
 const MAX_SEARCH_PAGES = 10 // сколько страниц истории подгружать в поисках исходного сообщения
 const ALLOWED_ATTACHMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif']
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
+// поле ввода растёт вниз по мере текста (как в Telegram/виджете, см. widget.js),
+// не скроллит содержимое вбок — дальше этой высоты появляется внутренний скролл
+const MAX_INPUT_HEIGHT = 120
 
 // реакции сообщения, сгруппированные по эмодзи — для рендера пилюль под пузырём
 function groupReactions(reactions: MessageReaction[] | undefined, meId: number | null) {
@@ -157,7 +160,7 @@ export function ChatWindow({
 		x: 0,
 		y: 0
 	})
-	const inputRef = useRef<HTMLInputElement | null>(null)
+	const inputRef = useRef<HTMLTextAreaElement | null>(null)
 	const [readEventAt, setReadEventAt] = useState(0) // «прочитано» из живого события
 	const typingTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const lastTypingSentRef = useRef(0)
@@ -259,11 +262,11 @@ export function ChatWindow({
 	// на это событие у React есть отдельная проверка «tracker vs node.value»,
 	// которая обновляет трекер и сама вызывает наш onChange — ровно так, как если
 	// бы текст напечатал пользователь.
-	function insertAtCursor(el: HTMLInputElement, text: string) {
+	function insertAtCursor(el: HTMLTextAreaElement, text: string) {
 		const start = el.selectionStart ?? el.value.length
 		const end = el.selectionEnd ?? el.value.length
 		const value = el.value.slice(0, start) + text + el.value.slice(end)
-		const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+		const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
 		if (setter) setter.call(el, value)
 		else el.value = value
 		const pos = start + text.length
@@ -294,6 +297,16 @@ export function ChatWindow({
 	}
 
 	// сообщаем посетителю «печатает» (не чаще раза в TYPING_EMIT_MS)
+	// растёт вниз вместе с текстом вместо горизонтального скролла; срабатывает
+	// и на обычный ввод, и на вставку эмодзи/шаблона/диктовку (все идут через
+	// setInput), и на очистку после отправки — везде, где меняется input
+	useEffect(() => {
+		const el = inputRef.current
+		if (!el) return
+		el.style.height = 'auto'
+		el.style.height = Math.min(el.scrollHeight, MAX_INPUT_HEIGHT) + 'px'
+	}, [input])
+
 	function notifyTyping(value: string) {
 		const now = Date.now()
 		if (value.trim() && now - lastTypingSentRef.current > TYPING_EMIT_MS) {
@@ -1076,7 +1089,7 @@ export function ChatWindow({
 					e.preventDefault()
 					sendMessage()
 				}}
-				className="flex items-center gap-2 border-t border-zinc-200 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-zinc-800"
+				className="flex items-end gap-2 border-t border-zinc-200 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-zinc-800"
 			>
 				<input
 					ref={fileInputRef}
@@ -1149,15 +1162,23 @@ export function ChatWindow({
 						</>
 					)}
 				</div>
-				<input
+				<textarea
 					ref={inputRef}
 					value={input}
+					rows={1}
 					onKeyDown={e => {
-						// Escape по очереди: панели эмодзи/шаблонов, потом ответ
-						if (e.key !== 'Escape') return
-						if (emojiOpen) setEmojiOpen(false)
-						else if (cannedOpen) setCannedOpen(false)
-						else if (replyTarget) setReplyTarget(null)
+						if (e.key === 'Escape') {
+							if (emojiOpen) setEmojiOpen(false)
+							else if (cannedOpen) setCannedOpen(false)
+							else if (replyTarget) setReplyTarget(null)
+							return
+						}
+						// Enter — отправить, Shift+Enter — новая строка; не мешаем IME-вводу
+						// (тот же приём, что в виджете, см. widget.js)
+						if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+							e.preventDefault()
+							sendMessage()
+						}
 					}}
 					onChange={e => {
 						setInput(e.target.value)
@@ -1176,8 +1197,7 @@ export function ChatWindow({
 					}}
 					placeholder={dictation.listening ? 'Говорите…' : 'Ответ…'}
 					aria-label="Сообщение"
-					autoComplete="off"
-					className="box-border h-11 min-w-0 flex-1 rounded-xl border border-zinc-300 bg-white px-4 text-base text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/15 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-300 dark:focus:ring-zinc-300/20"
+					className="box-border max-h-[120px] min-h-[44px] min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-base leading-6 text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/15 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-300 dark:focus:ring-zinc-300/20"
 				/>
 				{dictation.supported && (
 					<button
