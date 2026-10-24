@@ -18,7 +18,7 @@ import {
 	X
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { flushSync } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import {
 	deleteConversation,
 	exportConversation,
@@ -26,11 +26,15 @@ import {
 	fetchMessages,
 	markRead,
 	MESSAGES_PAGE_SIZE,
+	REACTION_EMOJIS,
+	removeMessageReaction,
+	setMessageReaction,
 	updateAssignee,
 	updateStatus,
 	uploadAttachment,
 	type CannedResponse,
 	type Conversation,
+	type MessageReaction,
 	type Operator,
 	type UploadedAttachment
 } from '../lib/api'
@@ -58,6 +62,7 @@ type Message = {
 	failed?: boolean // сервер отклонил сообщение
 	attachmentUrl?: string | null
 	attachmentName?: string | null
+	reactions?: MessageReaction[]
 }
 
 const NEAR_BOTTOM_PX = 150
@@ -69,6 +74,24 @@ const MAX_SEARCH_PAGES = 10 // сколько страниц истории по
 const ALLOWED_ATTACHMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif']
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
 
+// реакции сообщения, сгруппированные по эмодзи — для рендера пилюль под пузырём
+function groupReactions(reactions: MessageReaction[] | undefined, meId: number | null) {
+	if (!reactions?.length) return []
+	const order: string[] = []
+	const counts = new Map<string, number>()
+	const mineSet = new Set<string>()
+	for (const r of reactions) {
+		if (!counts.has(r.emoji)) order.push(r.emoji)
+		counts.set(r.emoji, (counts.get(r.emoji) ?? 0) + 1)
+		if (r.adminId === meId) mineSet.add(r.emoji)
+	}
+	return order.map(emoji => ({
+		emoji,
+		count: counts.get(emoji)!,
+		mine: mineSet.has(emoji)
+	}))
+}
+
 const authorLabel = (sender: string) =>
 	sender === 'admin' ? 'Вы' : sender === 'bot' ? 'Бот' : 'Посетитель'
 
@@ -76,6 +99,7 @@ const authorLabel = (sender: string) =>
 export function ChatWindow({
 	token,
 	conversation,
+	meId,
 	operators,
 	cannedResponses,
 	onBack,
@@ -86,6 +110,7 @@ export function ChatWindow({
 }: {
 	token: string
 	conversation: Conversation
+	meId: number | null // свой id — чтобы понимать, какая из реакций своя
 	operators: Operator[] // для дропдауна «Назначить»
 	cannedResponses: CannedResponse[] // для панели шаблонов ответов
 	onBack: () => void // на телефоне — вернуться к списку
@@ -112,6 +137,14 @@ export function ChatWindow({
 	// на телефоне вторичные действия хедера (назначить/скачать/удалить/закрыть)
 	// спрятаны за одной кнопкой «⋮», как в Telegram — на десктопе не используется
 	const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+	// эмодзи/прикрепить/шаблоны — за одной кнопкой «⋮» в композере, как в Telegram
+	const [composerMenuOpen, setComposerMenuOpen] = useState(false)
+	// id сообщения, у которого сейчас открыт пикер реакций (❤️ 👍 🔥 🙏), и
+	// координаты кнопки-триггера — пикер рендерится порталом в body (см. ниже),
+	// иначе его обрезает overflow-y-auto списка сообщений, если открыть рядом
+	// с сообщением у самого верха/низа видимой области
+	const [reactionPickerFor, setReactionPickerFor] = useState<number | null>(null)
+	const [reactionPickerRect, setReactionPickerRect] = useState<DOMRect | null>(null)
 	const [pendingAttachment, setPendingAttachment] = useState<UploadedAttachment | null>(null)
 	const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null)
 	const [uploadingAttachment, setUploadingAttachment] = useState(false)
@@ -281,6 +314,35 @@ export function ChatWindow({
 		inputRef.current?.focus()
 	}
 
+	// один оператор — одна реакция на сообщение (как на бэкенде): повторный тап
+	// тем же эмодзи снимает реакцию, другим — заменяет. Оптимистично обновляем
+	// сразу, настоящее состояние придёт следом по WS всем открытым вкладкам
+	// (включая эту же — обновление просто совпадёт)
+	async function toggleReaction(m: Message, emoji: string) {
+		if (meId == null || m.pending || m.failed) return
+		setReactionPickerFor(null)
+		const mine = m.reactions?.find(r => r.adminId === meId)
+		const removing = mine?.emoji === emoji
+		setMessages(prev =>
+			prev.map(x => {
+				if (x.id !== m.id) return x
+				const rest = (x.reactions ?? []).filter(r => r.adminId !== meId)
+				return {
+					...x,
+					reactions: removing ? rest : [...rest, { emoji, adminId: meId, adminEmail: '' }]
+				}
+			})
+		)
+		try {
+			if (removing) await removeMessageReaction(token, m.id)
+			else await setMessageReaction(token, m.id, emoji)
+		} catch {
+			// сервер поправит по WS-событию при следующем изменении; специально
+			// не откатываем оптимистичное обновление — редкий сбой сети не стоит
+			// того, чтобы реакция на экране «моргала» обратно
+		}
+	}
+
 	// долгое нажатие на сообщение (сенсорный экран) — ответить
 	function pressStart(e: React.PointerEvent, m: Message) {
 		if (e.pointerType !== 'touch') return
@@ -372,6 +434,15 @@ export function ChatWindow({
 					case 'read':
 						if (msg.by === 'visitor' && msg.conversationId === conversationId) {
 							setReadEventAt(Date.parse(msg.at as string) || 0)
+						}
+						return
+					case 'reaction':
+						if (msg.conversationId === conversationId) {
+							const messageId = msg.messageId as number
+							const reactions = msg.reactions as MessageReaction[]
+							setMessages(prev =>
+								prev.map(m => (m.id === messageId ? { ...m, reactions } : m))
+							)
 						}
 						return
 				}
@@ -854,7 +925,50 @@ export function ChatWindow({
 											<Reply aria-hidden="true" className="h-4 w-4" />
 										</button>
 									)}
+									{!m.pending && !m.failed && meId != null && (
+										<button
+											type="button"
+											onClick={e => {
+												if (reactionPickerFor === m.id) {
+													setReactionPickerFor(null)
+													return
+												}
+												setReactionPickerRect(e.currentTarget.getBoundingClientRect())
+												setReactionPickerFor(m.id)
+											}}
+											aria-label="Поставить реакцию"
+											title="Реакция"
+											className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-zinc-500 opacity-70 transition-opacity hover:bg-zinc-100 hover:text-zinc-900 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-300/30"
+										>
+											<Smile aria-hidden="true" className="h-4 w-4" />
+										</button>
+									)}
 								</div>
+								{groupReactions(m.reactions, meId).length > 0 && (
+									<div
+										className={`mt-0.5 flex flex-wrap gap-1 ${mine ? 'justify-end' : 'justify-start'}`}
+									>
+										{groupReactions(m.reactions, meId).map(r => (
+											<button
+												key={r.emoji}
+												type="button"
+												onClick={() => toggleReaction(m, r.emoji)}
+												className={`flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-xs leading-none ${
+													r.mine
+														? 'border-zinc-900 bg-zinc-900/5 dark:border-zinc-100 dark:bg-zinc-100/10'
+														: 'border-zinc-200 bg-transparent dark:border-zinc-700'
+												}`}
+											>
+												<span>{r.emoji}</span>
+												{r.count > 1 && (
+													<span className="text-zinc-500 dark:text-zinc-400">
+														{r.count}
+													</span>
+												)}
+											</button>
+										))}
+									</div>
+								)}
 								<span
 									className={`mt-0.5 flex items-center gap-1 px-1 text-[11px] ${
 										m.failed
@@ -964,30 +1078,6 @@ export function ChatWindow({
 				}}
 				className="flex items-center gap-2 border-t border-zinc-200 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-zinc-800"
 			>
-				<button
-					type="button"
-					onClick={() => {
-						setEmojiOpen(o => !o)
-						setCannedOpen(false)
-					}}
-					aria-label="Эмодзи"
-					aria-expanded={emojiOpen}
-					aria-controls="emoji-panel"
-					className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-300/30 ${
-						emojiOpen ? 'bg-zinc-100 dark:bg-zinc-800' : 'bg-transparent'
-					}`}
-				>
-					<Smile aria-hidden="true" className="h-5 w-5" />
-				</button>
-				<button
-					type="button"
-					onClick={() => fileInputRef.current?.click()}
-					aria-label="Прикрепить изображение"
-					title="Прикрепить изображение"
-					className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 bg-transparent text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-300/30"
-				>
-					<Paperclip aria-hidden="true" className="h-5 w-5" />
-				</button>
 				<input
 					ref={fileInputRef}
 					type="file"
@@ -995,22 +1085,70 @@ export function ChatWindow({
 					hidden
 					onChange={e => handleFileSelect(e.target.files?.[0])}
 				/>
-				<button
-					type="button"
-					onClick={() => {
-						setCannedOpen(o => !o)
-						setEmojiOpen(false)
-					}}
-					aria-label="Шаблоны ответов"
-					aria-expanded={cannedOpen}
-					aria-controls="canned-panel"
-					title="Шаблоны ответов"
-					className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-300/30 ${
-						cannedOpen ? 'bg-zinc-100 dark:bg-zinc-800' : 'bg-transparent'
-					}`}
-				>
-					<MessageSquareText aria-hidden="true" className="h-5 w-5" />
-				</button>
+				<div className="relative shrink-0">
+					<button
+						type="button"
+						onClick={() => setComposerMenuOpen(o => !o)}
+						aria-label="Ещё"
+						aria-expanded={composerMenuOpen}
+						className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-300/30 ${
+							composerMenuOpen || emojiOpen || cannedOpen
+								? 'bg-zinc-100 dark:bg-zinc-800'
+								: 'bg-transparent'
+						}`}
+					>
+						<MoreVertical aria-hidden="true" className="h-5 w-5" />
+					</button>
+					{composerMenuOpen && (
+						<>
+							<div
+								className="fixed inset-0 z-40"
+								onClick={() => setComposerMenuOpen(false)}
+							/>
+							<div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-lg border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+								<button
+									type="button"
+									onClick={() => {
+										setEmojiOpen(o => !o)
+										setCannedOpen(false)
+										setComposerMenuOpen(false)
+									}}
+									aria-expanded={emojiOpen}
+									aria-controls="emoji-panel"
+									className="flex h-10 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+								>
+									<Smile aria-hidden="true" className="h-4 w-4" />
+									Эмодзи
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										fileInputRef.current?.click()
+										setComposerMenuOpen(false)
+									}}
+									className="flex h-10 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+								>
+									<Paperclip aria-hidden="true" className="h-4 w-4" />
+									Прикрепить изображение
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										setCannedOpen(o => !o)
+										setEmojiOpen(false)
+										setComposerMenuOpen(false)
+									}}
+									aria-expanded={cannedOpen}
+									aria-controls="canned-panel"
+									className="flex h-10 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+								>
+									<MessageSquareText aria-hidden="true" className="h-4 w-4" />
+									Шаблоны ответов
+								</button>
+							</div>
+						</>
+					)}
+				</div>
 				<input
 					ref={inputRef}
 					value={input}
@@ -1024,6 +1162,17 @@ export function ChatWindow({
 					onChange={e => {
 						setInput(e.target.value)
 						notifyTyping(e.target.value)
+					}}
+					onPaste={e => {
+						// скриншот/картинка из буфера обмена (Ctrl+V) — тот же путь, что
+						// и выбор файла через меню «⋮»; если в буфере не картинка, просто
+						// даём браузеру вставить текст как обычно
+						const file = Array.from(e.clipboardData.items)
+							.find(item => item.type.startsWith('image/'))
+							?.getAsFile()
+						if (!file) return
+						e.preventDefault()
+						handleFileSelect(file)
 					}}
 					placeholder={dictation.listening ? 'Говорите…' : 'Ответ…'}
 					aria-label="Сообщение"
@@ -1063,6 +1212,42 @@ export function ChatWindow({
 			{cannedOpen && (
 				<CannedResponsesPanel items={cannedResponses} onPick={insertCanned} />
 			)}
+			{reactionPickerFor !== null &&
+				reactionPickerRect &&
+				createPortal(
+					<>
+						<div
+							className="fixed inset-0 z-40"
+							onClick={() => setReactionPickerFor(null)}
+						/>
+						<div
+							className="fixed z-50 flex gap-0.5 rounded-full border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+							style={{
+								bottom: window.innerHeight - reactionPickerRect.top + 4,
+								left: Math.min(
+									Math.max(8, reactionPickerRect.left - 60),
+									window.innerWidth - 180
+								)
+							}}
+						>
+							{REACTION_EMOJIS.map(emoji => (
+								<button
+									key={emoji}
+									type="button"
+									onClick={() => {
+										const m = messages.find(x => x.id === reactionPickerFor)
+										if (m) toggleReaction(m, emoji)
+									}}
+									aria-label={emoji}
+									className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
+								>
+									{emoji}
+								</button>
+							))}
+						</div>
+					</>,
+					document.body
+				)}
 			{lightboxUrl && (
 				<div
 					className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6"

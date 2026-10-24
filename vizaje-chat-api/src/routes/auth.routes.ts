@@ -29,5 +29,7 @@ export const authRoutes = new Elysia()
 			set.status = 401
 			return { error: 'Unauthorized' }
 		}
-		return { email: payload.email }
+		// id нужен фронту, чтобы понимать, какая из реакций на сообщении — своя
+		// (см. chat/reactions.ts) — отдельно от email, который уже везде использовался
+		return { id: payload.sub, email: payload.email }
 	})

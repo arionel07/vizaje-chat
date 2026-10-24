@@ -13,6 +13,7 @@ import {
 	updateConversationAssignee,
 	updateConversationStatus
 } from '../chat/service'
+import { getReactionsForMessages } from '../chat/reactions'
 import { getConversationDeleteEnabled } from '../settings/service'
 
 const messagesQuery = t.Object({
@@ -89,7 +90,14 @@ export const conversationsRoutes = new Elysia()
 				set.status = 401
 				return { error: 'Unauthorized' }
 			}
-			return getMessages(Number(params.id), query)
+			const rows = await getMessages(Number(params.id), query)
+			// реакции — только здесь (эндпоинт админки); у /widget/messages их нет,
+			// посетитель их не видит (см. chat/reactions.ts)
+			const reactionsByMessage = await getReactionsForMessages(rows.map(m => m.id))
+			return rows.map(m => ({
+				...m,
+				reactions: reactionsByMessage.get(m.id) ?? []
+			}))
 		},
 		{ query: messagesQuery }
 	)

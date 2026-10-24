@@ -174,3 +174,13 @@ cd /opt/vizaje-chat
 git pull
 docker compose up -d --build
 ```
+
+Если менялась схема БД (`vizaje-chat-api/src/db/schema.ts` в diff) — этот
+шаг её не применяет сам, нужно отдельно накатить миграцию (раздел 6) **до
+или сразу после** `docker compose up -d --build`. Признак, что забыли:
+в `docker compose logs api` ошибка вида `column "..." does not exist` или
+`relation "..." does not exist` — сразу у всех каналов разом (виджет,
+Telegram, Instagram), не только у того, что добавлял новую колонку/таблицу,
+потому что код приложения ожидает полную схему во всех запросах к общим
+таблицам (`conversations`, `messages`), а не только в тех местах, где
+новое поле реально используется.

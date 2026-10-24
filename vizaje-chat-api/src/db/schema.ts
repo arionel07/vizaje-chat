@@ -7,7 +7,8 @@ import {
 	pgTable,
 	serial,
 	text,
-	timestamp
+	timestamp,
+	uniqueIndex
 } from 'drizzle-orm/pg-core'
 
 export const adminUsers = pgTable('admin_users', {
@@ -83,6 +84,29 @@ export const messages = pgTable(
 		createdAt: timestamp('created_at').defaultNow().notNull()
 	},
 	t => [index('messages_conversation_id_idx').on(t.conversationId, t.id)]
+)
+
+// реакции оператора на сообщение (❤️ 👍 🔥 🙏, см. chat/reactions.ts) — только
+// для админки, посетитель их не видит и не ставит сам. Один оператор — одна
+// реакция на сообщение (unique ниже): повторная простановка другого эмодзи
+// просто заменяет прежний, не добавляет вторую
+export const messageReactions = pgTable(
+	'message_reactions',
+	{
+		id: serial('id').primaryKey(),
+		messageId: integer('message_id')
+			.notNull()
+			.references(() => messages.id, { onDelete: 'cascade' }),
+		adminId: integer('admin_id')
+			.notNull()
+			.references(() => adminUsers.id, { onDelete: 'cascade' }),
+		emoji: text('emoji').notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull()
+	},
+	t => [
+		index('message_reactions_message_id_idx').on(t.messageId),
+		uniqueIndex('message_reactions_message_admin_unique').on(t.messageId, t.adminId)
+	]
 )
 
 // key-value для простых глобальных настроек (пока только рабочий график)

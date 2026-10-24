@@ -99,6 +99,16 @@ export async function addMessage(
 	}
 }
 
+// беседа, которой принадлежит сообщение — нужно знать, в какую WS-комнату
+// слать событие о реакции (см. routes/reactions.routes.ts)
+export async function getMessageConversationId(messageId: number) {
+	const [row] = await db
+		.select({ conversationId: messages.conversationId })
+		.from(messages)
+		.where(eq(messages.id, messageId))
+	return row?.conversationId ?? null
+}
+
 export async function conversationExists(conversationId: number) {
 	const [row] = await db
 		.select({ id: conversations.id })

@@ -5,6 +5,7 @@ import { ChatWindow } from './chat/ChatWindow'
 import { ConversationList } from './conversations/ConversationList'
 import {
 	fetchCannedResponses,
+	fetchMe,
 	fetchOperators,
 	type CannedResponse,
 	type Conversation,
@@ -29,11 +30,20 @@ function App() {
 	const [operators, setOperators] = useState<Operator[]>([])
 	const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([])
 	const [screen, setScreen] = useState<Screen>('chat')
+	// свой id — чтобы в чате понимать, какая из реакций на сообщении своя
+	const [meId, setMeId] = useState<number | null>(null)
 
 	// список для дропдауна «Назначить» в чате; меняется редко — грузим один раз на сессию
 	useEffect(() => {
 		if (!token) return
 		fetchOperators(token).then(setOperators).catch(() => {})
+	}, [token])
+
+	useEffect(() => {
+		if (!token) return
+		fetchMe(token)
+			.then(me => setMeId(me.id))
+			.catch(() => {})
 	}, [token])
 
 	// список для панели шаблонов в чате; перезагружаем и после правок в настройках
@@ -110,6 +120,7 @@ function App() {
 						key={selected.id}
 						token={token}
 						conversation={selected}
+						meId={meId}
 						operators={operators}
 						cannedResponses={cannedResponses}
 						onBack={() => setSelected(null)}

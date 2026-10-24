@@ -37,6 +37,42 @@ export async function login(email: string, password: string) {
 	if (!res.ok) throw new LoginError(res.status)
 	return res.json() as Promise<{ token: string }>
 }
+
+// id нужен, чтобы понимать «своя» ли реакция на сообщении (см. ChatWindow)
+export async function fetchMe(token: string) {
+	const res = await fetch(`${API_URL}/admin/auth/me`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return res.json() as Promise<{ id: number; email: string }>
+}
+
+// 4 популярных реакции — фиксированный набор, тот же, что на бэкенде
+// (chat/reactions.ts), не настраивается через API
+export const REACTION_EMOJIS = ['❤️', '👍', '🔥', '🙏'] as const
+
+export type MessageReaction = { emoji: string; adminId: number; adminEmail: string }
+
+export async function setMessageReaction(token: string, messageId: number, emoji: string) {
+	const res = await fetch(`${API_URL}/admin/messages/${messageId}/reaction`, {
+		method: 'PUT',
+		headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+		body: JSON.stringify({ emoji })
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+}
+
+export async function removeMessageReaction(token: string, messageId: number) {
+	const res = await fetch(`${API_URL}/admin/messages/${messageId}/reaction`, {
+		method: 'DELETE',
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+}
+
 export type Conversation = {
 	id: number
 	sessionId: string
@@ -159,6 +195,7 @@ export async function fetchMessages(
 			attachmentType?: string | null
 			attachmentName?: string | null
 			attachmentSize?: number | null
+			reactions?: MessageReaction[]
 		}>
 	>
 }
