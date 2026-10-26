@@ -26,7 +26,11 @@ const conversationsQuery = t.Object({
 	offset: t.Optional(t.Numeric()),
 	status: t.Optional(t.Union([t.Literal('open'), t.Literal('closed')])),
 	unread: t.Optional(t.BooleanString()),
+	unanswered: t.Optional(t.BooleanString()),
 	assignee: t.Optional(t.Union([t.Literal('me'), t.Literal('unassigned')])),
+	// на конкретного оператора (не обязательно текущего) — быстрый переход
+	// к беседам коллеги из списка операторов в сайдбаре
+	assigneeId: t.Optional(t.Numeric()),
 	q: t.Optional(t.String())
 })
 

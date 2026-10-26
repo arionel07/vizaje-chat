@@ -116,6 +116,7 @@ function App() {
 						setSelected(null)
 						setScreen('analytics')
 					}}
+					operators={operators}
 				/>
 			</aside>
 			{/* «ручка» сворачивания списка бесед — только ПК; сидит между панелями,

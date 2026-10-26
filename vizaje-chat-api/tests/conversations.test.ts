@@ -67,6 +67,14 @@ describe('список бесед', () => {
 		expect((await list('?status=open&unread=true')).map(r => r.id)).toEqual([A])
 	})
 
+	test('фильтр unanswered — ждут ответа (последнее сообщение от посетителя)', async () => {
+		// A: последнее сообщение — от посетителя. B — от оператора. C — закрыта,
+		// последнее сообщение системное («Беседа закрыта»), не от посетителя —
+		// не считается ждущей ответа. D — пустая
+		const unanswered = (await list('?unanswered=true')).map(r => r.id)
+		expect(unanswered).toEqual([A])
+	})
+
 	test('пагинация limit/offset', async () => {
 		const all = await list()
 		const page1 = await list('?limit=2&offset=0')
@@ -84,9 +92,9 @@ describe('список бесед', () => {
 })
 
 describe('счётчики и прочитанность', () => {
-	test('counts: открытые, закрытые, с непрочитанными', async () => {
+	test('counts: открытые, закрытые, с непрочитанными, ждут ответа', async () => {
 		const res = await api('/admin/conversations/counts', { token })
-		expect(res.body).toEqual({ open: 3, closed: 1, unread: 2, mine: 0 })
+		expect(res.body).toEqual({ open: 3, closed: 1, unread: 2, unanswered: 1, mine: 0 })
 	})
 
 	test('POST /read обнуляет непрочитанные, новое сообщение считается снова', async () => {

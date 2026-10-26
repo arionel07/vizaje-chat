@@ -93,12 +93,22 @@ export type Operator = { id: number; email: string }
 
 export const CONVERSATIONS_PAGE_SIZE = 30
 
-export type ConversationFilter = 'all' | 'mine' | 'open' | 'closed' | 'unread'
+// `op:<id>` — беседы конкретного оператора (не обязательно текущего), для
+// быстрого перехода к беседам коллеги из списка операторов в сайдбаре
+export type ConversationFilter =
+	| 'all'
+	| 'mine'
+	| 'open'
+	| 'closed'
+	| 'unread'
+	| 'unanswered'
+	| `op:${number}`
 
 export type ConversationCounts = {
 	open: number
 	closed: number
 	unread: number
+	unanswered: number
 	mine: number
 }
 
@@ -122,7 +132,9 @@ export async function fetchConversations(
 	})
 	if (filter === 'open' || filter === 'closed') params.set('status', filter)
 	if (filter === 'unread') params.set('unread', 'true')
+	if (filter === 'unanswered') params.set('unanswered', 'true')
 	if (filter === 'mine') params.set('assignee', 'me')
+	if (filter.startsWith('op:')) params.set('assigneeId', filter.slice(3))
 	if (q?.trim()) params.set('q', q.trim())
 	const res = await fetch(`${API_URL}/admin/conversations?${params}`, {
 		headers: { Authorization: `Bearer ${token}` }

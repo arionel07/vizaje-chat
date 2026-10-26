@@ -199,17 +199,32 @@ const unreadCountExpr = () => sql`(
 		)
 )`
 
+// беседа «ждёт ответа» — последнее сообщение от посетителя (независимо от
+// того, прочитал ли его оператор: «непрочитано» и «ждёт ответа» — разные
+// вещи, оператор мог открыть беседу и пока не ответить). coalesce(..., false) —
+// в пустой беседе (нет сообщений вообще) подзапрос даёт null, считаем «не ждёт»
+const awaitingReplyExpr = () => sql`coalesce((
+	select m.sender = 'visitor' from messages m
+	where m.conversation_id = ${convId}
+	order by m.id desc limit 1
+), false)`
+
 // Беседы, отсортированные по последней активности, с последним сообщением
 // и числом непрочитанных сообщений посетителя.
 // status — только открытые/закрытые; unread — только с непрочитанными;
+// unanswered — только те, где последнее сообщение от посетителя (ждут ответа);
 // assignee: 'me' — назначенные на meId, 'unassigned' — без назначения;
+// assigneeId — на конкретного оператора (быстрый переход «беседы коллеги»,
+// независимо от того, кто сейчас залогинен) — приоритетнее assignee, если оба заданы;
 // q — по тексту сообщений (вся история беседы) и sessionId, регистронезависимо
 export async function getConversations({
 	limit,
 	offset,
 	status,
 	unread,
+	unanswered,
 	assignee,
+	assigneeId,
 	meId,
 	q
 }: {
@@ -217,7 +232,9 @@ export async function getConversations({
 	offset?: number
 	status?: 'open' | 'closed'
 	unread?: boolean
+	unanswered?: boolean
 	assignee?: 'me' | 'unassigned'
+	assigneeId?: number
 	meId?: number
 	q?: string
 } = {}) {
@@ -280,10 +297,14 @@ export async function getConversations({
 			and(
 				status ? eq(conversations.status, status) : undefined,
 				unread ? sql`${unreadCountExpr()} > 0` : undefined,
-				assignee === 'unassigned' ? isNull(conversations.assigneeId) : undefined,
-				assignee === 'me' && meId != null
-					? eq(conversations.assigneeId, meId)
-					: undefined,
+				unanswered ? sql`${awaitingReplyExpr()}` : undefined,
+				assigneeId != null
+					? eq(conversations.assigneeId, assigneeId)
+					: assignee === 'unassigned'
+						? isNull(conversations.assigneeId)
+						: assignee === 'me' && meId != null
+							? eq(conversations.assigneeId, meId)
+							: undefined,
 				searchCondition
 			)
 		)
@@ -295,17 +316,18 @@ export async function getConversations({
 		.offset(skip)
 }
 
-// счётчики для фильтров: открытые, закрытые, с непрочитанными, мои
+// счётчики для фильтров: открытые, закрытые, с непрочитанными, ждут ответа, мои
 export async function getConversationCounts(meId?: number) {
 	const [row] = await db
 		.select({
 			open: sql<number>`(count(*) filter (where "conversations"."status" = 'open'))::int`,
 			closed: sql<number>`(count(*) filter (where "conversations"."status" = 'closed'))::int`,
 			unread: sql<number>`(count(*) filter (where ${unreadCountExpr()} > 0))::int`,
+			unanswered: sql<number>`(count(*) filter (where ${awaitingReplyExpr()}))::int`,
 			mine: sql<number>`(count(*) filter (where "conversations"."assignee_id" = ${meId ?? null}))::int`
 		})
 		.from(conversations)
-	return row ?? { open: 0, closed: 0, unread: 0, mine: 0 }
+	return row ?? { open: 0, closed: 0, unread: 0, unanswered: 0, mine: 0 }
 }
 
 // назначить беседу оператору или снять назначение (assigneeId: null).

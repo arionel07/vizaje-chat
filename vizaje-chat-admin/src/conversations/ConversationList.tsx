@@ -22,6 +22,7 @@ import {
 	type Conversation,
 	type ConversationCounts,
 	type ConversationFilter,
+	type Operator,
 	type Schedule
 } from '../lib/api'
 import { formatListTime, initials } from '../lib/format'
@@ -69,6 +70,7 @@ const FILTERS: { id: ConversationFilter; label: string }[] = [
 	{ id: 'all', label: 'Все' },
 	{ id: 'mine', label: 'Мои' },
 	{ id: 'unread', label: 'Непрочитанные' },
+	{ id: 'unanswered', label: 'Ждут ответа' },
 	{ id: 'open', label: 'Открытые' },
 	{ id: 'closed', label: 'Закрытые' }
 ]
@@ -84,8 +86,19 @@ function withTyping(prev: Set<number>, id: number, typing: boolean) {
 
 function countFor(id: ConversationFilter, counts: ConversationCounts | null) {
 	if (!counts) return null
-	if (id === 'all') return counts.open + counts.closed
-	return counts[id]
+	switch (id) {
+		case 'all':
+			return counts.open + counts.closed
+		case 'mine':
+		case 'open':
+		case 'closed':
+		case 'unread':
+		case 'unanswered':
+			return counts[id]
+		default:
+			// op:<id> (конкретный оператор) — без бейджа-счётчика, только быстрый переход
+			return null
+	}
 }
 
 export function ConversationList({
@@ -96,7 +109,8 @@ export function ConversationList({
 	refreshKey,
 	onLogout,
 	onOpenSettings,
-	onOpenAnalytics
+	onOpenAnalytics,
+	operators
 }: {
 	token: string
 	onSelect: (conversation: Conversation) => void
@@ -107,6 +121,8 @@ export function ConversationList({
 	onLogout: () => void
 	onOpenSettings: () => void
 	onOpenAnalytics: () => void
+	// для ряда быстрого перехода к беседам конкретного оператора (op:<id>)
+	operators: Operator[]
 }) {
 	const [conversations, setConversations] = useState<Conversation[]>([])
 	const [counts, setCounts] = useState<ConversationCounts | null>(null)
@@ -460,6 +476,38 @@ export function ConversationList({
 					)
 				})}
 			</div>
+
+			{operators.length > 0 && (
+				<div
+					role="group"
+					aria-label="Беседы оператора"
+					className="flex gap-2 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+				>
+					{operators.map(o => {
+						const id: ConversationFilter = `op:${o.id}`
+						const active = filter === id
+						// до "@" — короче, чем весь email, но узнаваемо
+						const label = o.email.split('@')[0]
+						return (
+							<button
+								key={o.id}
+								type="button"
+								onClick={() => changeFilter(id)}
+								aria-pressed={active}
+								title={o.email}
+								className={`flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 dark:focus-visible:ring-zinc-300/30 ${
+									active
+										? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900'
+										: 'bg-zinc-50 text-zinc-600 hover:bg-zinc-100 dark:bg-zinc-800/50 dark:text-zinc-400 dark:hover:bg-zinc-800'
+								}`}
+							>
+								<User aria-hidden="true" className="h-3 w-3 shrink-0" />
+								{label}
+							</button>
+						)
+					})}
+				</div>
+			)}
 
 			<div className="min-h-0 flex-1 overflow-y-auto border-t border-zinc-200 dark:border-zinc-800">
 				{loadFailed && (

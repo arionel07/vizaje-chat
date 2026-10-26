@@ -126,6 +126,20 @@ describe('фильтр assignee и счётчик mine', () => {
 		expect(unassigned.map(c => c.id)).toEqual([B])
 	})
 
+	// assigneeId — быстрый переход к беседам конкретного коллеги из списка
+	// операторов в сайдбаре, не только «мои» (не зависит от того, кто залогинен)
+	test('assigneeId — беседы конкретного оператора, не обязательно текущего', async () => {
+		const byAdmin = (
+			await api(`/admin/conversations?assigneeId=${adminId}`, { token: otherToken })
+		).body as any[]
+		expect(byAdmin.map(c => c.id)).toEqual([A])
+
+		const byOther = (
+			await api(`/admin/conversations?assigneeId=${otherId}`, { token })
+		).body as any[]
+		expect(byOther).toEqual([])
+	})
+
 	test('counts включает mine', async () => {
 		const res = await api('/admin/conversations/counts', { token })
 		expect(res.body).toMatchObject({ mine: 1 })
