@@ -1,5 +1,6 @@
 import {
 	type AnyPgColumn,
+	boolean,
 	index,
 	integer,
 	jsonb,
@@ -81,6 +82,12 @@ export const messages = pgTable(
 		attachmentType: text('attachment_type'),
 		attachmentName: text('attachment_name'),
 		attachmentSize: integer('attachment_size'),
+		// системные сообщения о смене статуса беседы («Беседа закрыта»/«открыта
+		// заново») — только для оператора: посетителю статус «закрыто» на фоне
+		// его же вопроса читается резковато, он и так понимает по ответу
+		// оператора, что вопрос решён. Не публикуется и не отдаётся по
+		// /widget/messages (см. getMessages/updateConversationStatus)
+		adminOnly: boolean('admin_only').default(false).notNull(),
 		createdAt: timestamp('created_at').defaultNow().notNull()
 	},
 	t => [index('messages_conversation_id_idx').on(t.conversationId, t.id)]

@@ -42,14 +42,13 @@ describe('GET /widget/export', () => {
 		expect(text).toContain('Посетитель: Есть ли в наличии?')
 		expect(text).toContain('Оператор: Да, есть в наличии')
 		expect(text).toContain('Бот: Автоматический ответ...')
-		expect(text).toContain('--- Беседа закрыта ---')
+		// посетителю статус беседы не показываем — см. messages.adminOnly
+		expect(text).not.toContain('--- Беседа закрыта ---')
 
-		// хронологический порядок: вопрос раньше ответа оператора раньше закрытия
+		// хронологический порядок: вопрос раньше ответа оператора
 		const qIdx = text.indexOf('Есть ли в наличии?')
 		const aIdx = text.indexOf('Да, есть в наличии')
-		const closedIdx = text.indexOf('--- Беседа закрыта ---')
 		expect(qIdx).toBeLessThan(aIdx)
-		expect(aIdx).toBeLessThan(closedIdx)
 	})
 
 	test('без токена → 401', async () => {

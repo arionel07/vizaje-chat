@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
-import { addMessage } from '../src/chat/service'
+import { addMessage, updateConversationStatus } from '../src/chat/service'
 import { db } from '../src/db/client'
 import { conversations } from '../src/db/schema'
 import { api, connectWs, makeAdmin, makeVisitor, resetDb } from './helpers'
@@ -30,6 +30,18 @@ describe('сообщения через REST', () => {
 		const history = await api('/widget/messages', { token: v.token })
 		expect(history.status).toBe(200)
 		expect(history.body.map((m: any) => m.text)).toEqual(['первое', 'второе'])
+	})
+
+	test('закрытие беседы: системное сообщение не отдаётся посетителю', async () => {
+		const v = await makeVisitor()
+		await addMessage(v.conversationId, 'visitor', 'вопрос')
+		await updateConversationStatus(v.conversationId, 'closed')
+
+		const history = await api('/widget/messages', { token: v.token })
+		expect(history.status).toBe(200)
+		expect(
+			history.body.some((m: any) => m.sender === 'system' && m.text === 'Беседа закрыта')
+		).toBe(false)
 	})
 
 	test('тело без text → 422', async () => {

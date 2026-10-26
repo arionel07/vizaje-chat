@@ -143,7 +143,7 @@ export const widgetRoutes = new Elysia()
 			}
 			const conversationId = await findConversationIdBySessionId(session.sessionId)
 			if (conversationId === null) return []
-			return getMessages(conversationId, query)
+			return getMessages(conversationId, { ...query, excludeAdminOnly: true })
 		},
 		{
 			query: t.Object({
@@ -160,7 +160,8 @@ export const widgetRoutes = new Elysia()
 			return { error: 'Unauthorized' }
 		}
 		const conversationId = await findConversationIdBySessionId(session.sessionId)
-		const text = conversationId === null ? null : await exportConversationText(conversationId)
+		const text =
+			conversationId === null ? null : await exportConversationText(conversationId, true)
 		if (!text) {
 			set.status = 404
 			return { error: 'Conversation not found' }

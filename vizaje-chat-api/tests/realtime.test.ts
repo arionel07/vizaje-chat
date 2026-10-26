@@ -100,7 +100,7 @@ describe('валидация входящих сообщений', () => {
 })
 
 describe('статус беседы в реальном времени', () => {
-	test('закрытие через API: системное сообщение приходит обеим сторонам', async () => {
+	test('закрытие через API: системное сообщение приходит только оператору, не посетителю', async () => {
 		const v = await makeVisitor()
 		const visitor = await connectWs(v.token)
 		const admin = await connectWs(adminToken)
@@ -111,8 +111,9 @@ describe('статус беседы в реальном времени', () => {
 			body: { status: 'closed' }
 		})
 		const isClosedMsg = (m: any) => m.sender === 'system' && m.text === 'Беседа закрыта'
-		await visitor.waitFor(isClosedMsg)
 		await admin.waitFor(isClosedMsg)
+		await sleep(150)
+		expect(visitor.messages.some(isClosedMsg)).toBe(false)
 
 		visitor.close()
 		admin.close()

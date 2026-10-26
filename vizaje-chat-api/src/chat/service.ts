@@ -2,7 +2,7 @@ import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '../db/client'
 import { adminUsers, conversations, messages } from '../db/schema'
-import { publishMessage } from './events'
+import { publishMessage, publishToAdmins } from './events'
 
 // список операторов для назначения бесед
 export async function getOperators() {
@@ -60,13 +60,16 @@ export type Attachment = {
 	size: number
 }
 
-// replyToId должен быть заранее проверен через replyTargetExists
+// replyToId должен быть заранее проверен через replyTargetExists.
+// adminOnly — только для системных сообщений о статусе беседы (см. ниже):
+// не должно отдаваться и публиковаться посетителю
 export async function addMessage(
 	conversationId: number,
 	sender: 'visitor' | 'admin' | 'bot' | 'system',
 	text: string,
 	replyToId?: number | null,
-	attachment?: Attachment | null
+	attachment?: Attachment | null,
+	adminOnly?: boolean
 ) {
 	// посетитель пишет в закрытую беседу — открываем её заново
 	if (sender === 'visitor') {
@@ -89,7 +92,8 @@ export async function addMessage(
 			attachmentUrl: attachment?.url ?? null,
 			attachmentType: attachment?.type ?? null,
 			attachmentName: attachment?.name ?? null,
-			attachmentSize: attachment?.size ?? null
+			attachmentSize: attachment?.size ?? null,
+			adminOnly: adminOnly ?? false
 		})
 		.returning()
 	if (!message) throw new Error('Failed to insert message')
@@ -138,7 +142,11 @@ export const MAX_MESSAGES_LIMIT = 200
 // `before` — id сообщения: вернуть только более старые (для подгрузки истории)
 export async function getMessages(
 	conversationId: number,
-	{ limit, before }: { limit?: number; before?: number } = {}
+	{
+		limit,
+		before,
+		excludeAdminOnly
+	}: { limit?: number; before?: number; excludeAdminOnly?: boolean } = {}
 ) {
 	const size = Math.min(
 		Math.max(Math.trunc(limit ?? DEFAULT_MESSAGES_LIMIT), 1),
@@ -165,7 +173,8 @@ export async function getMessages(
 		.where(
 			and(
 				eq(messages.conversationId, conversationId),
-				before ? lt(messages.id, before) : undefined
+				before ? lt(messages.id, before) : undefined,
+				excludeAdminOnly ? eq(messages.adminOnly, false) : undefined
 			)
 		)
 		.orderBy(desc(messages.id))
@@ -402,12 +411,17 @@ export async function updateConversationStatus(
 		.set({ status })
 		.where(eq(conversations.id, conversationId))
 		.returning()
+	// adminOnly — посетителю не показываем и не публикуем: статус беседы
+	// касается только оператора, посетитель и так видит, что ему ответили
 	const systemMessage = await addMessage(
 		conversationId,
 		'system',
-		status === 'closed' ? 'Беседа закрыта' : 'Беседа открыта заново'
+		status === 'closed' ? 'Беседа закрыта' : 'Беседа открыта заново',
+		undefined,
+		undefined,
+		true
 	)
-	publishMessage(conversationId, systemMessage)
+	publishToAdmins(systemMessage)
 	return updated
 }
 
@@ -451,7 +465,12 @@ const EXPORT_SENDER_LABELS: Record<string, string> = {
 // Вся история беседы простым текстом для скачивания; null — беседы нет.
 // Системные сообщения (смена статуса, назначение) — отдельной строкой без таймштампа,
 // остальные — "[дата время] Отправитель: текст", в хронологическом порядке
-export async function exportConversationText(conversationId: number) {
+// excludeAdminOnly — для экспорта из виджета (GET /widget/export): статус
+// беседы посетителю не показываем нигде, в т.ч. в его же скачанной истории
+export async function exportConversationText(
+	conversationId: number,
+	excludeAdminOnly?: boolean
+) {
 	const exists = await conversationExists(conversationId)
 	if (!exists) return null
 
@@ -464,7 +483,12 @@ export async function exportConversationText(conversationId: number) {
 			attachmentName: messages.attachmentName
 		})
 		.from(messages)
-		.where(eq(messages.conversationId, conversationId))
+		.where(
+			and(
+				eq(messages.conversationId, conversationId),
+				excludeAdminOnly ? eq(messages.adminOnly, false) : undefined
+			)
+		)
 		.orderBy(messages.id)
 
 	const lines = rows.map(m => {
