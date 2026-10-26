@@ -1,5 +1,7 @@
 import {
 	BarChart3,
+	ChevronLeft,
+	ChevronRight,
 	CircleAlert,
 	Lock,
 	LogOut,
@@ -68,9 +70,9 @@ const SEARCH_DEBOUNCE_MS = 350
 
 const FILTERS: { id: ConversationFilter; label: string }[] = [
 	{ id: 'all', label: 'Все' },
+	{ id: 'unanswered', label: 'Ждут ответа' },
 	{ id: 'mine', label: 'Мои' },
 	{ id: 'unread', label: 'Непрочитанные' },
-	{ id: 'unanswered', label: 'Ждут ответа' },
 	{ id: 'open', label: 'Открытые' },
 	{ id: 'closed', label: 'Закрытые' }
 ]
@@ -99,6 +101,83 @@ function countFor(id: ConversationFilter, counts: ConversationCounts | null) {
 			// op:<id> (конкретный оператор) — без бейджа-счётчика, только быстрый переход
 			return null
 	}
+}
+
+// ряд с горизонтальной прокруткой (фильтры/операторы) — на тачпаде/телефоне
+// скроллится и так, но на обычной мыши без шифта/горизонтального колеса это
+// неочевидно; стрелки — только на ПК (md:flex) и только когда есть куда
+// скроллить в эту сторону (не загромождают короткие ряды)
+function ScrollableRow({
+	ariaLabel,
+	children
+}: {
+	ariaLabel: string
+	children: React.ReactNode
+}) {
+	const scrollRef = useRef<HTMLDivElement | null>(null)
+	const [canLeft, setCanLeft] = useState(false)
+	const [canRight, setCanRight] = useState(false)
+
+	const updateArrows = useCallback(() => {
+		const el = scrollRef.current
+		if (!el) return
+		setCanLeft(el.scrollLeft > 4)
+		setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4)
+	}, [])
+
+	useEffect(() => {
+		updateArrows()
+		const el = scrollRef.current
+		if (!el) return
+		el.addEventListener('scroll', updateArrows, { passive: true })
+		const ro = new ResizeObserver(updateArrows)
+		ro.observe(el)
+		return () => {
+			el.removeEventListener('scroll', updateArrows)
+			ro.disconnect()
+		}
+		// children меняют ширину содержимого (например, список операторов) —
+		// нужно пересчитать, влезает ли оно теперь целиком
+	}, [updateArrows, children])
+
+	function scroll(dir: 1 | -1) {
+		scrollRef.current?.scrollBy({ left: dir * 180, behavior: 'smooth' })
+	}
+
+	return (
+		<div className="relative">
+			{canLeft && (
+				<button
+					type="button"
+					onClick={() => scroll(-1)}
+					aria-label="Прокрутить влево"
+					tabIndex={-1}
+					className="absolute inset-y-0 left-0 z-10 hidden w-8 cursor-pointer items-center justify-center bg-gradient-to-r from-white via-white to-transparent text-zinc-400 hover:text-zinc-900 md:flex dark:from-zinc-900 dark:via-zinc-900 dark:text-zinc-500 dark:hover:text-zinc-100"
+				>
+					<ChevronLeft aria-hidden="true" className="h-4 w-4" />
+				</button>
+			)}
+			<div
+				ref={scrollRef}
+				role="group"
+				aria-label={ariaLabel}
+				className="flex gap-2 overflow-x-auto px-4 pb-3 [scrollbar-width:none] md:px-9 [&::-webkit-scrollbar]:hidden"
+			>
+				{children}
+			</div>
+			{canRight && (
+				<button
+					type="button"
+					onClick={() => scroll(1)}
+					aria-label="Прокрутить вправо"
+					tabIndex={-1}
+					className="absolute inset-y-0 right-0 z-10 hidden w-8 cursor-pointer items-center justify-center bg-gradient-to-l from-white via-white to-transparent text-zinc-400 hover:text-zinc-900 md:flex dark:from-zinc-900 dark:via-zinc-900 dark:text-zinc-500 dark:hover:text-zinc-100"
+				>
+					<ChevronRight aria-hidden="true" className="h-4 w-4" />
+				</button>
+			)}
+		</div>
+	)
 }
 
 export function ConversationList({
@@ -438,11 +517,7 @@ export function ConversationList({
 				</div>
 			</div>
 
-			<div
-				role="group"
-				aria-label="Фильтр бесед"
-				className="flex gap-2 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-			>
+			<ScrollableRow ariaLabel="Фильтр бесед">
 				{FILTERS.map(f => {
 					const n = countFor(f.id, counts)
 					const active = filter === f.id
@@ -475,14 +550,10 @@ export function ConversationList({
 						</button>
 					)
 				})}
-			</div>
+			</ScrollableRow>
 
 			{operators.length > 0 && (
-				<div
-					role="group"
-					aria-label="Беседы оператора"
-					className="flex gap-2 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-				>
+				<ScrollableRow ariaLabel="Беседы оператора">
 					{operators.map(o => {
 						const id: ConversationFilter = `op:${o.id}`
 						const active = filter === id
@@ -506,7 +577,7 @@ export function ConversationList({
 							</button>
 						)
 					})}
-				</div>
+				</ScrollableRow>
 			)}
 
 			<div className="min-h-0 flex-1 overflow-y-auto border-t border-zinc-200 dark:border-zinc-800">
