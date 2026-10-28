@@ -1,4 +1,32 @@
-const API_URL = 'http://localhost:3001'
+import { API_URL } from './config'
+
+export class UnauthorizedError extends Error {
+	constructor() {
+		super('Unauthorized')
+	}
+}
+
+// токен протух или невалиден — сбрасываем и выкидываем на логин-форму
+function handleUnauthorized(res: Response) {
+	if (res.status !== 401) return
+	localStorage.removeItem('admin_token')
+	window.location.reload()
+	throw new UnauthorizedError()
+}
+
+// не-2xx ответ (кроме 401, он обрабатывается отдельно) — ошибка, а не «данные»
+function assertOk(res: Response) {
+	if (!res.ok) throw new Error(`Request failed: ${res.status}`)
+}
+
+// ошибка входа с HTTP-статусом: 401 — неверные данные, 429 — слишком много попыток
+export class LoginError extends Error {
+	status: number
+	constructor(status: number) {
+		super(`Login failed: ${status}`)
+		this.status = status
+	}
+}
 
 export async function login(email: string, password: string) {
 	const res = await fetch(`${API_URL}/admin/auth/login`, {
@@ -6,31 +34,212 @@ export async function login(email: string, password: string) {
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ email, password })
 	})
-	if (!res.ok) throw new Error('Invalid credentials')
+	if (!res.ok) throw new LoginError(res.status)
 	return res.json() as Promise<{ token: string }>
 }
-export async function fetchConversations(token: string) {
-	const res = await fetch(`${API_URL}/admin/conversations`, {
+
+// id нужен, чтобы понимать «своя» ли реакция на сообщении (см. ChatWindow)
+export async function fetchMe(token: string) {
+	const res = await fetch(`${API_URL}/admin/auth/me`, {
 		headers: { Authorization: `Bearer ${token}` }
 	})
-	if (res.status === 401) {
-		localStorage.removeItem('admin_token')
-		window.location.reload() // выкинет на логин-форму
-		throw new Error('Unauthorized')
-	}
-	return res.json()
+	handleUnauthorized(res)
+	assertOk(res)
+	return res.json() as Promise<{ id: number; email: string }>
 }
 
-export async function fetchMessages(token: string, conversationId: number) {
+// 4 популярных реакции — фиксированный набор, тот же, что на бэкенде
+// (chat/reactions.ts), не настраивается через API
+export const REACTION_EMOJIS = ['❤️', '👍', '🔥', '🙏'] as const
+
+export type MessageReaction = { emoji: string; adminId: number; adminEmail: string }
+
+export async function setMessageReaction(token: string, messageId: number, emoji: string) {
+	const res = await fetch(`${API_URL}/admin/messages/${messageId}/reaction`, {
+		method: 'PUT',
+		headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+		body: JSON.stringify({ emoji })
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+}
+
+export async function removeMessageReaction(token: string, messageId: number) {
+	const res = await fetch(`${API_URL}/admin/messages/${messageId}/reaction`, {
+		method: 'DELETE',
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+}
+
+export type Conversation = {
+	id: number
+	sessionId: string
+	channel: 'widget' | 'telegram' | 'instagram'
+	status: 'open' | 'closed'
+	createdAt: string
+	visitorLastReadAt: string | null // когда посетитель видел сообщения — для «Прочитано»
+	assigneeId: number | null
+	assigneeEmail: string | null
+	lastMessageText: string | null
+	lastMessageSender: string | null
+	lastMessageHasAttachment: boolean
+	lastMessageAt: string | null
+	unreadCount: number
+}
+
+export type Operator = { id: number; email: string }
+
+export const CONVERSATIONS_PAGE_SIZE = 30
+
+// `op:<id>` — беседы конкретного оператора (не обязательно текущего), для
+// быстрого перехода к беседам коллеги из списка операторов в сайдбаре
+export type ConversationFilter =
+	| 'all'
+	| 'mine'
+	| 'open'
+	| 'closed'
+	| 'unread'
+	| 'unanswered'
+	| `op:${number}`
+
+export type ConversationCounts = {
+	open: number
+	closed: number
+	unread: number
+	unanswered: number
+	mine: number
+}
+
+export async function fetchConversations(
+	token: string,
+	{
+		limit = CONVERSATIONS_PAGE_SIZE,
+		offset = 0,
+		filter = 'all',
+		q
+	}: {
+		limit?: number
+		offset?: number
+		filter?: ConversationFilter
+		q?: string // поиск по тексту сообщений (вся история) и sessionId
+	} = {}
+) {
+	const params = new URLSearchParams({
+		limit: String(limit),
+		offset: String(offset)
+	})
+	if (filter === 'open' || filter === 'closed') params.set('status', filter)
+	if (filter === 'unread') params.set('unread', 'true')
+	if (filter === 'unanswered') params.set('unanswered', 'true')
+	if (filter === 'mine') params.set('assignee', 'me')
+	if (filter.startsWith('op:')) params.set('assigneeId', filter.slice(3))
+	if (q?.trim()) params.set('q', q.trim())
+	const res = await fetch(`${API_URL}/admin/conversations?${params}`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return res.json() as Promise<Conversation[]>
+}
+
+export async function fetchCounts(token: string) {
+	const res = await fetch(`${API_URL}/admin/conversations/counts`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return res.json() as Promise<ConversationCounts>
+}
+
+export async function fetchOperators(token: string) {
+	const res = await fetch(`${API_URL}/admin/operators`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return res.json() as Promise<Operator[]>
+}
+
+// проверяет, что токен ещё действителен; при 401 — выход на логин.
+// Сетевые ошибки (сервер недоступен) пробрасываются как есть
+export async function checkSession(token: string) {
+	const res = await fetch(`${API_URL}/admin/auth/me`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+}
+
+export async function markRead(token: string, conversationId: number) {
 	const res = await fetch(
-		`${API_URL}/admin/conversations/${conversationId}/messages`,
+		`${API_URL}/admin/conversations/${conversationId}/read`,
+		{ method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+	)
+	handleUnauthorized(res)
+}
+
+export const MESSAGES_PAGE_SIZE = 50
+
+// before — id самого старого загруженного сообщения (подгрузка более ранних)
+export async function fetchMessages(
+	token: string,
+	conversationId: number,
+	before?: number
+) {
+	const params = new URLSearchParams({ limit: String(MESSAGES_PAGE_SIZE) })
+	if (before) params.set('before', String(before))
+	const res = await fetch(
+		`${API_URL}/admin/conversations/${conversationId}/messages?${params}`,
 		{
 			headers: { Authorization: `Bearer ${token}` }
 		}
 	)
+	handleUnauthorized(res)
+	assertOk(res)
 	return res.json() as Promise<
-		Array<{ id: number; sender: string; text: string; createdAt: string }>
+		Array<{
+			id: number
+			sender: string
+			text: string
+			createdAt: string
+			attachmentUrl?: string | null
+			attachmentType?: string | null
+			attachmentName?: string | null
+			attachmentSize?: number | null
+			reactions?: MessageReaction[]
+		}>
 	>
+}
+
+export type UploadedAttachment = { url: string; type: string; name: string; size: number }
+
+// загрузка картинки оператором (для /admin/upload); url в ответе — относительный
+// (/uploads/<uuid>.<ext>), подставляется к API_URL при рендере и при отправке сообщения
+export async function uploadAttachment(token: string, file: File) {
+	const form = new FormData()
+	form.append('file', file)
+	const res = await fetch(`${API_URL}/admin/upload`, {
+		method: 'POST',
+		headers: { Authorization: `Bearer ${token}` },
+		body: form
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<UploadedAttachment>(res)
+}
+
+// история беседы .txt файлом; имя берём из Content-Disposition сервера
+export async function exportConversation(token: string, conversationId: number) {
+	const res = await fetch(
+		`${API_URL}/admin/conversations/${conversationId}/export`,
+		{ headers: { Authorization: `Bearer ${token}` } }
+	)
+	handleUnauthorized(res)
+	assertOk(res)
+	const disposition = res.headers.get('content-disposition') || ''
+	const filename =
+		/filename="?([^"]+)"?/.exec(disposition)?.[1] || `conversation-${conversationId}.txt`
+	return { blob: await res.blob(), filename }
 }
 
 export async function updateStatus(
@@ -49,5 +258,308 @@ export async function updateStatus(
 			body: JSON.stringify({ status })
 		}
 	)
+	handleUnauthorized(res)
 	return res.json()
+}
+
+export async function updateAssignee(
+	token: string,
+	conversationId: number,
+	assigneeId: number | null
+) {
+	const res = await fetch(
+		`${API_URL}/admin/conversations/${conversationId}/assignee`,
+		{
+			method: 'PATCH',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${token}`
+			},
+			body: JSON.stringify({ assigneeId })
+		}
+	)
+	handleUnauthorized(res)
+	assertOk(res)
+	return res.json() as Promise<{ assigneeId: number | null; assigneeEmail: string | null }>
+}
+
+// безвозвратно; 403, пока выключено в настройках (см. fetchConversationDeleteEnabled)
+export async function deleteConversation(token: string, conversationId: number) {
+	const res = await fetch(`${API_URL}/admin/conversations/${conversationId}`, {
+		method: 'DELETE',
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	if (!res.ok) {
+		const body = await res.json().catch(() => null)
+		throw new Error(body?.error || `Request failed: ${res.status}`)
+	}
+}
+
+export type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
+export type DaySchedule = { enabled: boolean; start: string; end: string } // start/end — "HH:MM"
+export type Schedule = { timezone: string; days: Record<DayKey, DaySchedule> }
+
+export async function fetchSchedule(token: string) {
+	const res = await fetch(`${API_URL}/admin/settings/schedule`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return res.json() as Promise<Schedule>
+}
+
+// сервер сам проверяет формат времени и что начало раньше конца — при ошибке
+// (422) кидает Error с текстом для показа в форме
+export async function updateSchedule(token: string, days: Schedule['days']) {
+	const res = await fetch(`${API_URL}/admin/settings/schedule`, {
+		method: 'PUT',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		},
+		body: JSON.stringify({ days })
+	})
+	handleUnauthorized(res)
+	if (!res.ok) {
+		const body = await res.json().catch(() => null)
+		throw new Error(body?.error || `Request failed: ${res.status}`)
+	}
+	return res.json() as Promise<Schedule>
+}
+
+// список опций виджета: добавить сезон — дописать строку сюда, компонент настроек
+// и сам виджет ничего не знают о конкретных значениях и не требуют переделки
+export const WIDGET_THEMES = ['classic', 'winter', 'halloween'] as const
+export type WidgetTheme = (typeof WIDGET_THEMES)[number]
+
+export async function fetchWidgetTheme(token: string) {
+	const res = await fetch(`${API_URL}/admin/settings/theme`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return ((await res.json()) as { theme: WidgetTheme }).theme
+}
+
+export async function updateWidgetTheme(token: string, theme: WidgetTheme) {
+	const res = await fetch(`${API_URL}/admin/settings/theme`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify({ theme })
+	})
+	handleUnauthorized(res)
+	if (!res.ok) {
+		const body = await res.json().catch(() => null)
+		throw new Error(body?.error || `Request failed: ${res.status}`)
+	}
+	return ((await res.json()) as { theme: WidgetTheme }).theme
+}
+
+// разрешение на удаление бесед — выключено по умолчанию, включается точечно
+export async function fetchConversationDeleteEnabled(token: string) {
+	const res = await fetch(`${API_URL}/admin/settings/conversation-delete`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return ((await res.json()) as { enabled: boolean }).enabled
+}
+
+export async function updateConversationDeleteEnabled(token: string, enabled: boolean) {
+	const res = await fetch(`${API_URL}/admin/settings/conversation-delete`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify({ enabled })
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return ((await res.json()) as { enabled: boolean }).enabled
+}
+
+export type CannedResponse = {
+	id: number
+	title: string
+	textRu: string
+	textRo: string
+	createdAt: string
+}
+export type CannedResponseInput = { title: string; textRu: string; textRo: string }
+
+// сервер отдаёт текст ошибки (пустое поле и т.п.) — пробрасываем как Error для формы
+async function parseOrThrow<T>(res: Response): Promise<T> {
+	if (!res.ok) {
+		const body = await res.json().catch(() => null)
+		throw new Error(body?.error || `Request failed: ${res.status}`)
+	}
+	return res.json() as Promise<T>
+}
+
+export async function fetchCannedResponses(token: string) {
+	const res = await fetch(`${API_URL}/admin/canned-responses`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<CannedResponse[]>(res)
+}
+
+export async function createCannedResponse(token: string, input: CannedResponseInput) {
+	const res = await fetch(`${API_URL}/admin/canned-responses`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify(input)
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<CannedResponse>(res)
+}
+
+export async function updateCannedResponse(
+	token: string,
+	id: number,
+	input: Partial<CannedResponseInput>
+) {
+	const res = await fetch(`${API_URL}/admin/canned-responses/${id}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify(input)
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<CannedResponse>(res)
+}
+
+export async function deleteCannedResponse(token: string, id: number) {
+	const res = await fetch(`${API_URL}/admin/canned-responses/${id}`, {
+		method: 'DELETE',
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	await parseOrThrow<{ ok: true }>(res)
+}
+
+export type BotResponse = {
+	id: number
+	triggerText: string
+	answerRu: string
+	answerRo: string
+	createdAt: string
+}
+export type BotResponseInput = { triggerText: string; answerRu: string; answerRo: string }
+
+export async function fetchBotResponses(token: string) {
+	const res = await fetch(`${API_URL}/admin/bot-responses`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<BotResponse[]>(res)
+}
+
+export async function createBotResponse(token: string, input: BotResponseInput) {
+	const res = await fetch(`${API_URL}/admin/bot-responses`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify(input)
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<BotResponse>(res)
+}
+
+export async function updateBotResponse(
+	token: string,
+	id: number,
+	input: Partial<BotResponseInput>
+) {
+	const res = await fetch(`${API_URL}/admin/bot-responses/${id}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify(input)
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<BotResponse>(res)
+}
+
+export async function deleteBotResponse(token: string, id: number) {
+	const res = await fetch(`${API_URL}/admin/bot-responses/${id}`, {
+		method: 'DELETE',
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	await parseOrThrow<{ ok: true }>(res)
+}
+
+export type AnalyticsOverview = {
+	total: number
+	open: number
+	closed: number
+	avgFirstResponseSeconds: number | null
+	respondedCount: number
+}
+export type AnalyticsTimelinePoint = { date: string; count: number }
+export type AnalyticsOperatorStat = {
+	id: number
+	email: string
+	assigned: number
+	closed: number
+	avgFirstResponseSeconds: number | null
+}
+
+function rangeParams(from?: string, to?: string) {
+	const params = new URLSearchParams()
+	if (from) params.set('from', from)
+	if (to) params.set('to', to)
+	return params
+}
+
+export async function fetchAnalyticsOverview(token: string, from?: string, to?: string) {
+	const res = await fetch(`${API_URL}/admin/analytics/overview?${rangeParams(from, to)}`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<AnalyticsOverview>(res)
+}
+
+export async function fetchAnalyticsTimeline(token: string, from?: string, to?: string) {
+	const res = await fetch(`${API_URL}/admin/analytics/timeline?${rangeParams(from, to)}`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<AnalyticsTimelinePoint[]>(res)
+}
+
+export async function fetchAnalyticsOperators(token: string, from?: string, to?: string) {
+	const res = await fetch(`${API_URL}/admin/analytics/operators?${rangeParams(from, to)}`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<AnalyticsOperatorStat[]>(res)
+}
+
+// Web Push — уведомления о новых сообщениях прямо в браузер/телефон,
+// даже когда вкладка админки закрыта (см. public/sw.js и notifications/webpush.ts)
+export async function fetchVapidPublicKey(token: string) {
+	const res = await fetch(`${API_URL}/admin/web-push/public-key`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	if (res.status === 404) return null // не настроено на сервере
+	return ((await parseOrThrow<{ publicKey: string }>(res)).publicKey)
+}
+
+export async function subscribeWebPush(token: string, subscription: PushSubscriptionJSON) {
+	const res = await fetch(`${API_URL}/admin/web-push/subscribe`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify(subscription)
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+}
+
+export async function unsubscribeWebPush(token: string, endpoint: string) {
+	const res = await fetch(`${API_URL}/admin/web-push/unsubscribe`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify({ endpoint })
+	})
+	handleUnauthorized(res)
+	assertOk(res)
 }
