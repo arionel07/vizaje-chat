@@ -105,6 +105,8 @@
 			scrollToOriginal: 'Перейти к исходному сообщению',
 			closeLightbox: 'Закрыть',
 			replyToMessage: 'Ответить на сообщение',
+			copyMessage: 'Скопировать',
+			copied: 'Скопировано',
 			readReceipt: ' · Прочитано',
 			notSent: 'Не отправлено',
 			openChatUnread: unread => `Открыть чат, новых сообщений: ${unread}`,
@@ -160,6 +162,8 @@
 			scrollToOriginal: 'Mergi la mesajul original',
 			closeLightbox: 'Închide',
 			replyToMessage: 'Răspunde la mesaj',
+			copyMessage: 'Copiază',
+			copied: 'Copiat',
 			readReceipt: ' · Citit',
 			notSent: 'Netrimis',
 			openChatUnread: unread => `Deschide chatul, mesaje noi: ${unread}`,
@@ -297,6 +301,10 @@
 	)
 	const ICON_STOP = svg('<rect width="12" height="12" x="6" y="6" rx="2"/>', 22)
 	const ICON_REPLY = svg('<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>', 16)
+	const ICON_COPY = svg(
+		'<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+		16
+	)
 	const ICON_DOWNLOAD = svg(
 		'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
 		20
@@ -501,6 +509,13 @@
   .attach-remove:hover { background: var(--surface); color: var(--fg); }
   .bubble .attachment-img { display: block; max-width: 220px; max-height: 220px; border-radius: 12px; margin-top: 4px; cursor: zoom-in; object-fit: cover; }
   .bubble .text:empty { display: none; }
+  .bubble .text a { color: inherit; text-decoration: underline; word-break: break-all; }
+  /* меню долгого нажатия на сообщение (телефон) — «Ответить» / «Скопировать» */
+  .msg-menu { position: fixed; z-index: 2; display: flex; flex-direction: column; min-width: 170px;
+    padding: 6px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); box-shadow: var(--shadow); }
+  .msg-menu-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 9px;
+    font-size: 14px; text-align: left; color: var(--fg); }
+  .msg-menu-item:hover, .msg-menu-item:active { background: var(--surface); }
   .lightbox { position: fixed; inset: 0; z-index: calc(var(--vz-z, 999999) + 1); background: rgba(0,0,0,.85);
     display: flex; align-items: center; justify-content: center; padding: 24px; }
   .lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; display: block; }
@@ -870,6 +885,62 @@
 		replyBar.hidden = true
 	}
 
+	// меню долгого нажатия на сообщение (телефон): «Ответить» / «Скопировать» —
+	// на тач-устройствах нативное выделение текста отключено (.bubble user-select:none,
+	// иначе конфликтует с долгим нажатием), поэтому копирование даём явной кнопкой
+	let msgMenu = null
+	function closeMsgMenu() {
+		if (msgMenu) msgMenu.hidden = true
+	}
+	function copyMessageText(row) {
+		const text = row.querySelector('.bubble .text')?.textContent ?? ''
+		const fallbackCopy = () => {
+			const ta = document.createElement('textarea')
+			ta.value = text
+			ta.style.position = 'fixed'
+			ta.style.opacity = '0'
+			document.body.appendChild(ta)
+			ta.select()
+			try {
+				document.execCommand('copy')
+			} catch {}
+			ta.remove()
+		}
+		if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).catch(fallbackCopy)
+		else fallbackCopy()
+		setNote(t('copied'), { ms: 1500 })
+	}
+	function openMsgMenu(row, x, y) {
+		if (!msgMenu) {
+			msgMenu = document.createElement('div')
+			msgMenu.className = 'msg-menu'
+			msgMenu.hidden = true
+			msgMenu.innerHTML = `
+				<button type="button" class="msg-menu-item msg-menu-reply">${ICON_REPLY} ${t('replyToMessage')}</button>
+				<button type="button" class="msg-menu-item msg-menu-copy">${ICON_COPY} ${t('copyMessage')}</button>
+			`
+			msgMenu.querySelector('.msg-menu-reply').addEventListener('click', () => {
+				if (msgMenu._row) startReply(msgMenu._row)
+				closeMsgMenu()
+			})
+			msgMenu.querySelector('.msg-menu-copy').addEventListener('click', () => {
+				if (msgMenu._row) copyMessageText(msgMenu._row)
+				closeMsgMenu()
+			})
+			root.appendChild(msgMenu)
+		}
+		msgMenu._row = row
+		msgMenu.hidden = false
+		const panelRect = panel.getBoundingClientRect()
+		const menuRect = msgMenu.getBoundingClientRect()
+		let left = x - menuRect.width / 2
+		left = Math.max(panelRect.left + 8, Math.min(left, panelRect.right - menuRect.width - 8))
+		let top = y - menuRect.height - 14
+		if (top < panelRect.top + 8) top = Math.min(y + 14, panelRect.bottom - menuRect.height - 8)
+		msgMenu.style.left = `${left}px`
+		msgMenu.style.top = `${top}px`
+	}
+
 	const findRow = id => messagesEl.querySelector(`.row[data-id="${id}"]`)
 	// прокрутка к исходному сообщению; если оно в ещё не загруженной истории — подгружаем
 	async function scrollToMessage(id) {
@@ -907,6 +978,39 @@
 		if (lightbox) lightbox.hidden = true
 	}
 
+	// ссылки в тексте сообщения — кликабельны, открываются в новой вкладке
+	// (как в Telegram): текст остальным текстом, ссылка — отдельным <a>
+	const URL_RE = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi
+	// знаки пунктуации в конце совпадения — обычно конец предложения, не часть ссылки
+	const URL_TRAILING_PUNCT_RE = /[).,!?;:'"»]+$/
+	function appendLinkedText(container, text) {
+		let lastIndex = 0
+		for (const match of text.matchAll(URL_RE)) {
+			const start = match.index
+			if (start > lastIndex) {
+				container.appendChild(document.createTextNode(text.slice(lastIndex, start)))
+			}
+			let url = match[0]
+			let trail = ''
+			const trailMatch = url.match(URL_TRAILING_PUNCT_RE)
+			if (trailMatch) {
+				trail = trailMatch[0]
+				url = url.slice(0, -trail.length)
+			}
+			if (url) {
+				const a = document.createElement('a')
+				a.href = url.startsWith('www.') ? `https://${url}` : url
+				a.target = '_blank'
+				a.rel = 'noopener noreferrer'
+				a.textContent = url
+				container.appendChild(a)
+			}
+			if (trail) container.appendChild(document.createTextNode(trail))
+			lastIndex = start + match[0].length
+		}
+		if (lastIndex < text.length) container.appendChild(document.createTextNode(text.slice(lastIndex)))
+	}
+
 	// message: { id?, sender, text, createdAt?, replyTo? }
 	function renderMessage(m, prepend = false) {
 		const row = document.createElement('div')
@@ -921,7 +1025,7 @@
 			if (m.replyTo) bubble.appendChild(buildQuote(m.replyTo))
 			const text = document.createElement('span')
 			text.className = 'text'
-			text.textContent = m.text
+			appendLinkedText(text, m.text)
 			bubble.appendChild(text)
 			if (m.attachmentUrl) {
 				const img = document.createElement('img')
@@ -1796,7 +1900,7 @@
 		pressX = e.clientX
 		pressY = e.clientY
 		pressTimer = setTimeout(() => {
-			startReply(row)
+			openMsgMenu(row, pressX, pressY)
 			if (navigator.vibrate) navigator.vibrate(15)
 		}, LONG_PRESS_MS)
 	})
@@ -1806,6 +1910,7 @@
 	for (const type of ['pointerup', 'pointercancel', 'scroll']) {
 		messagesEl.addEventListener(type, cancelPress)
 	}
+	messagesEl.addEventListener('scroll', closeMsgMenu)
 	launcher.addEventListener('click', () => (isOpen ? closeChat() : openChat()))
 	closeBtn.addEventListener('click', closeChat)
 	function setMenuOpen(open) {
@@ -1820,6 +1925,7 @@
 	// клик вне меню или Escape — закрыть
 	document.addEventListener('click', e => {
 		if (!menuList.hidden && !e.composedPath().includes(menuWrap)) setMenuOpen(false)
+		if (msgMenu && !msgMenu.hidden && !e.composedPath().includes(msgMenu)) closeMsgMenu()
 	})
 	root.addEventListener('keydown', e => {
 		if (e.key === 'Escape' && !menuList.hidden) setMenuOpen(false)
