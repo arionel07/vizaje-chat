@@ -517,6 +517,31 @@ export async function fetchAnalyticsOverview(token: string, from?: string, to?: 
 	return parseOrThrow<AnalyticsOverview>(res)
 }
 
+// поиск по товарам (Meilisearch легаси-сайта, см. vizaje-chat-api/src/products) —
+// переключатель «Товары» рядом с поиском по беседам в ConversationList
+export type Product = {
+	sku: string
+	guid: string
+	barcode: string | null
+	title: string
+	titleRo: string
+	brand: string
+	imageUrl: string | null
+	url: string
+	hasVariants: boolean
+	variantSkus: string[]
+	variantBarcodes: string[]
+}
+
+export async function searchProducts(token: string, q: string) {
+	const params = new URLSearchParams({ q })
+	const res = await fetch(`${API_URL}/admin/products/search?${params}`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<Product[]>(res)
+}
+
 export async function fetchAnalyticsTimeline(token: string, from?: string, to?: string) {
 	const res = await fetch(`${API_URL}/admin/analytics/timeline?${rangeParams(from, to)}`, {
 		headers: { Authorization: `Bearer ${token}` }

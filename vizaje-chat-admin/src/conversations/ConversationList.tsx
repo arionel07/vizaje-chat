@@ -40,6 +40,7 @@ import {
 import { isWithinSchedule } from '../notifications/schedule'
 import { SoundToggle } from '../notifications/SoundToggle'
 import { ensureWebPushSubscription } from '../notifications/webpush'
+import { ProductSearch } from '../products/ProductSearch'
 import { ThemeToggle } from '../theme/ThemeToggle'
 
 const NOTIFICATION_TEXT_LIMIT = 200
@@ -206,6 +207,10 @@ export function ConversationList({
 	const [conversations, setConversations] = useState<Conversation[]>([])
 	const [counts, setCounts] = useState<ConversationCounts | null>(null)
 	const [filter, setFilter] = useState<ConversationFilter>('all')
+	// переключатель над полем поиска — «Беседы» (обычный поиск по перепискам,
+	// ниже) или «Товары» (ProductSearch — отдельный компонент, свой поиск
+	// по Meilisearch легаси-сайта, см. products/ProductSearch.tsx)
+	const [searchMode, setSearchMode] = useState<'conversations' | 'products'>('conversations')
 	// searchInput — то, что видно в поле; search — применённое (после debounce) значение
 	const [searchInput, setSearchInput] = useState('')
 	const [search, setSearch] = useState('')
@@ -491,30 +496,52 @@ export function ConversationList({
 			</header>
 
 			<div className="px-4 pb-3">
-				<div className="relative">
-					<Search
-						aria-hidden="true"
-						className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
-					/>
-					<input
-						type="text"
-						value={searchInput}
-						onChange={e => handleSearchInput(e.target.value)}
-						placeholder="Поиск по перепискам…"
-						aria-label="Поиск по беседам"
-						className="h-10 w-full rounded-lg border border-zinc-300 bg-white pl-9 pr-9 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/15 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-300 dark:focus:ring-zinc-300/20"
-					/>
-					{searchInput && (
+				<div role="tablist" aria-label="Режим поиска" className="mb-2 inline-flex gap-0.5">
+					{(['conversations', 'products'] as const).map(mode => (
 						<button
+							key={mode}
 							type="button"
-							onClick={clearSearch}
-							aria-label="Очистить поиск"
-							className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+							role="tab"
+							aria-selected={searchMode === mode}
+							onClick={() => setSearchMode(mode)}
+							className={`h-7 cursor-pointer rounded-lg border-0 px-3 text-xs font-medium ${
+								searchMode === mode
+									? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900'
+									: 'bg-transparent text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+							}`}
 						>
-							<X aria-hidden="true" className="h-4 w-4" />
+							{mode === 'conversations' ? 'Беседы' : 'Товары'}
 						</button>
-					)}
+					))}
 				</div>
+				{searchMode === 'products' ? (
+					<ProductSearch token={token} />
+				) : (
+					<div className="relative">
+						<Search
+							aria-hidden="true"
+							className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
+						/>
+						<input
+							type="text"
+							value={searchInput}
+							onChange={e => handleSearchInput(e.target.value)}
+							placeholder="Поиск по перепискам…"
+							aria-label="Поиск по беседам"
+							className="h-10 w-full rounded-lg border border-zinc-300 bg-white pl-9 pr-9 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/15 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-300 dark:focus:ring-zinc-300/20"
+						/>
+						{searchInput && (
+							<button
+								type="button"
+								onClick={clearSearch}
+								aria-label="Очистить поиск"
+								className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+							>
+								<X aria-hidden="true" className="h-4 w-4" />
+							</button>
+						)}
+					</div>
+				)}
 			</div>
 
 			<ScrollableRow ariaLabel="Фильтр бесед">

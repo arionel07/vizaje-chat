@@ -73,3 +73,14 @@ export const INSTAGRAM_PAGE_ACCESS_TOKEN = process.env.INSTAGRAM_PAGE_ACCESS_TOK
 // версия Graph API — Meta периодически меняет текущую; переопределяем на
 // случай, если эта версия устареет раньше следующего деплоя
 export const INSTAGRAM_API_VERSION = process.env.INSTAGRAM_API_VERSION || 'v21.0'
+
+// Поиск по товарам (/admin/products/search) — тот же Meilisearch-индекс, что
+// у поиска на основном сайте (легаси, отдельный проект — см. CLAUDE.md про
+// изоляцию). Опционально: без переменных роут отвечает 503, остальное не
+// затронуто. В проде — внутренний адрес контейнера Meilisearch в сети
+// vizaje-search-proxy (http://vizaje-meilisearch:7700), не публичный
+// https://search.vizaje-nica.com — см. deploy/DEPLOY.md
+export const MEILISEARCH_HOST = (process.env.MEILISEARCH_HOST || '').replace(/\/$/, '') || null
+// search-key (не master key) из site-meilisearch-prod.env легаси-проекта
+export const MEILISEARCH_SEARCH_KEY = process.env.MEILISEARCH_SEARCH_KEY || null
+export const MEILISEARCH_INDEX = process.env.MEILISEARCH_INDEX || null
