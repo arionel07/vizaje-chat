@@ -531,6 +531,7 @@ export type Product = {
 	hasVariants: boolean
 	variantSkus: string[]
 	variantBarcodes: string[]
+	inStock: boolean
 }
 
 export async function searchProducts(token: string, q: string) {

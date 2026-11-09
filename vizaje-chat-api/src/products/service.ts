@@ -23,6 +23,9 @@ type MeiliProductHit = {
 	category_uriRU: string
 	has_variants: boolean
 	variant_skus: string
+	// 1/0 в документе, не boolean — простое «в наличии / нет», без разбивки
+	// по складам (on_stock/on_stockWH тоже есть в индексе, но пока не нужны)
+	has_stock: number
 }
 
 export type Product = {
@@ -37,6 +40,7 @@ export type Product = {
 	hasVariants: boolean
 	variantSkus: string[]
 	variantBarcodes: string[]
+	inStock: boolean
 }
 
 // запятая — разделитель в этих полях индекса (variant_skus/variant_barcodes
@@ -60,7 +64,8 @@ function toProduct(hit: MeiliProductHit): Product {
 		url: `${SITE_BASE_URL}/ru/katalog/${hit.category_uriRU}/${hit.uriRU}`,
 		hasVariants: hit.has_variants,
 		variantSkus: splitList(hit.variant_skus || ''),
-		variantBarcodes: splitList(hit.variant_barcodes || '')
+		variantBarcodes: splitList(hit.variant_barcodes || ''),
+		inStock: Boolean(hit.has_stock)
 	}
 }
 

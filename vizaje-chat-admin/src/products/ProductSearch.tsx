@@ -57,6 +57,15 @@ function ProductCard({
 				<div className="min-w-0 flex-1">
 					<p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{product.title}</p>
 					<p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{product.brand}</p>
+					<span
+						className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${
+							product.inStock
+								? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
+								: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400'
+						}`}
+					>
+						{product.inStock ? 'В наличии' : 'Нет в наличии'}
+					</span>
 					<dl className="mt-2 space-y-0.5 text-xs text-zinc-600 dark:text-zinc-400">
 						<div className="flex gap-1">
 							<dt className="font-medium text-zinc-500 dark:text-zinc-500">SKU:</dt>

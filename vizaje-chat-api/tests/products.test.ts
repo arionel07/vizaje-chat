@@ -16,7 +16,8 @@ const SKU_5403 = {
 	uriRU: '5403',
 	category_uriRU: 'uhod-za-kojey-vokrug-glaz',
 	has_variants: false,
-	variant_skus: ''
+	variant_skus: '',
+	has_stock: 1
 }
 
 let lastRequest: { url: string; body: unknown } | null = null
@@ -56,7 +57,8 @@ describe('GET /admin/products/search', () => {
 				url: 'https://vizaje-nica.com/ru/katalog/uhod-za-kojey-vokrug-glaz/5403',
 				hasVariants: false,
 				variantSkus: [],
-				variantBarcodes: []
+				variantBarcodes: [],
+				inStock: true
 			}
 		])
 		expect(lastRequest?.url).toBe('http://meili.test/indexes/products/search')
@@ -85,6 +87,20 @@ describe('GET /admin/products/search', () => {
 			variantSkus: ['5404', '5405'],
 			variantBarcodes: ['3614270129682', '3614270129683']
 		})
+		setProductSearchFetcher(async (url, init) => {
+			lastRequest = { url: String(url), body: JSON.parse(String(init?.body)) }
+			return new Response(JSON.stringify({ hits: [SKU_5403] }), { status: 200 })
+		})
+	})
+
+	test('has_stock: 0 → inStock: false', async () => {
+		setProductSearchFetcher(async () => {
+			return new Response(JSON.stringify({ hits: [{ ...SKU_5403, has_stock: 0 }] }), {
+				status: 200
+			})
+		})
+		const res = await api('/admin/products/search?q=5403', { token: adminToken })
+		expect(res.body[0]).toMatchObject({ inStock: false })
 		setProductSearchFetcher(async (url, init) => {
 			lastRequest = { url: String(url), body: JSON.parse(String(init?.body)) }
 			return new Response(JSON.stringify({ hits: [SKU_5403] }), { status: 200 })
