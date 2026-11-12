@@ -106,6 +106,7 @@
 			closeLightbox: 'Закрыть',
 			replyToMessage: 'Ответить на сообщение',
 			copyMessage: 'Скопировать',
+			aiAnswering: 'Отвечает ИИ',
 			copied: 'Скопировано',
 			readReceipt: ' · Прочитано',
 			notSent: 'Не отправлено',
@@ -163,6 +164,7 @@
 			closeLightbox: 'Închide',
 			replyToMessage: 'Răspunde la mesaj',
 			copyMessage: 'Copiază',
+			aiAnswering: 'Răspunde AI',
 			copied: 'Copiat',
 			readReceipt: ' · Citit',
 			notSent: 'Netrimis',
@@ -510,6 +512,14 @@
   .bubble .attachment-img { display: block; max-width: 220px; max-height: 220px; border-radius: 12px; margin-top: 4px; cursor: zoom-in; object-fit: cover; }
   .bubble .text:empty { display: none; }
   .bubble .text a { color: inherit; text-decoration: underline; word-break: break-all; }
+  /* пометка над сообщением ИИ-бота — отличать от живого оператора, см. ai-bot/service.ts */
+  .ai-badge { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 600;
+    letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
+  /* кнопки под сообщением бота (наличие в магазине / страница товара) */
+  .msg-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .msg-action-btn { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--bg); font-size: 13px; font-weight: 500; color: var(--fg); text-align: left; }
+  .msg-action-btn:hover { background: var(--surface); }
   /* меню долгого нажатия на сообщение (телефон) — «Ответить» / «Скопировать» */
   .msg-menu { position: fixed; z-index: 2; display: flex; flex-direction: column; min-width: 170px;
     padding: 6px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); box-shadow: var(--shadow); }
@@ -1023,10 +1033,33 @@
 			const bubble = document.createElement('div')
 			bubble.className = 'bubble'
 			if (m.replyTo) bubble.appendChild(buildQuote(m.replyTo))
+			if (m.sender === 'bot') {
+				const aiBadge = document.createElement('span')
+				aiBadge.className = 'ai-badge'
+				aiBadge.textContent = t('aiAnswering')
+				bubble.appendChild(aiBadge)
+			}
 			const text = document.createElement('span')
 			text.className = 'text'
 			appendLinkedText(text, m.text)
 			bubble.appendChild(text)
+			if (Array.isArray(m.actions) && m.actions.length) {
+				const actions = document.createElement('div')
+				actions.className = 'msg-actions'
+				for (const action of m.actions) {
+					const btn = document.createElement('button')
+					btn.type = 'button'
+					btn.className = 'msg-action-btn'
+					btn.textContent = action.label
+					if (action.type === 'open_url') {
+						btn.addEventListener('click', () => window.open(action.value, '_blank', 'noopener'))
+					} else {
+						btn.addEventListener('click', () => sendText(action.value))
+					}
+					actions.appendChild(btn)
+				}
+				bubble.appendChild(actions)
+			}
 			if (m.attachmentUrl) {
 				const img = document.createElement('img')
 				img.className = 'attachment-img'

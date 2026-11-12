@@ -1097,7 +1097,10 @@ export function ChatWindow({
 									}`}
 								>
 									{m.sender === 'bot' && (
-										<Bot aria-label="Автоответ бота" className="h-3 w-3 shrink-0" />
+										<span className="flex items-center gap-0.5">
+											<Bot aria-hidden="true" className="h-3 w-3 shrink-0" />
+											Отвечает ИИ ·
+										</span>
 									)}
 									{m.failed
 										? 'Не отправлено'

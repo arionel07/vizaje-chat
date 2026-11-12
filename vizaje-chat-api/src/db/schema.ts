@@ -52,6 +52,12 @@ export const conversations = pgTable('conversations', {
 	assigneeId: integer('assignee_id').references(() => adminUsers.id, {
 		onDelete: 'set null'
 	}),
+	// ИИ-бот передал беседу оператору (бренд не продаётся на сайте, брак/возврат,
+	// кнопка «наличие в магазине» и т.п.) — дальше бот больше не отвечает в этой
+	// беседе, только оператор (см. ai-bot/service.ts). Сознательно не сбрасывается
+	// при переоткрытии закрытой беседы — раз человек уже подключился, он и остаётся
+	// «владельцем» беседы до её закрытия, а не до случайного возврата посетителя
+	aiHandedOff: boolean('ai_handed_off').default(false).notNull(),
 	createdAt: timestamp('created_at').defaultNow().notNull()
 })
 
@@ -88,6 +94,11 @@ export const messages = pgTable(
 		// оператора, что вопрос решён. Не публикуется и не отдаётся по
 		// /widget/messages (см. getMessages/updateConversationStatus)
 		adminOnly: boolean('admin_only').default(false).notNull(),
+		// кнопки под сообщением ИИ-бота (см. ai-bot/service.ts) — массив
+		// { label, type: 'send_text' | 'open_url', value } или null, если их нет.
+		// 'send_text' — клик отправляет value как обычное сообщение посетителя
+		// (как quick-reply), 'open_url' — просто открывает ссылку в новой вкладке
+		actions: jsonb('actions'),
 		createdAt: timestamp('created_at').defaultNow().notNull()
 	},
 	t => [index('messages_conversation_id_idx').on(t.conversationId, t.id)]

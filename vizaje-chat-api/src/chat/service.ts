@@ -60,6 +60,11 @@ export type Attachment = {
 	size: number
 }
 
+// кнопки под сообщением ИИ-бота (см. ai-bot/service.ts) — 'send_text' шлёт
+// value как обычное сообщение посетителя (как quick-reply), 'open_url'
+// просто открывает ссылку в новой вкладке
+export type MessageAction = { label: string; type: 'send_text' | 'open_url'; value: string }
+
 // replyToId должен быть заранее проверен через replyTargetExists.
 // adminOnly — только для системных сообщений о статусе беседы (см. ниже):
 // не должно отдаваться и публиковаться посетителю
@@ -69,7 +74,8 @@ export async function addMessage(
 	text: string,
 	replyToId?: number | null,
 	attachment?: Attachment | null,
-	adminOnly?: boolean
+	adminOnly?: boolean,
+	actions?: MessageAction[] | null
 ) {
 	// посетитель пишет в закрытую беседу — открываем её заново
 	if (sender === 'visitor') {
@@ -93,7 +99,8 @@ export async function addMessage(
 			attachmentType: attachment?.type ?? null,
 			attachmentName: attachment?.name ?? null,
 			attachmentSize: attachment?.size ?? null,
-			adminOnly: adminOnly ?? false
+			adminOnly: adminOnly ?? false,
+			actions: actions ?? null
 		})
 		.returning()
 	if (!message) throw new Error('Failed to insert message')
@@ -165,6 +172,7 @@ export async function getMessages(
 			attachmentType: messages.attachmentType,
 			attachmentName: messages.attachmentName,
 			attachmentSize: messages.attachmentSize,
+			actions: messages.actions,
 			parentSender: parent.sender,
 			parentText: sql<string | null>`left(${parent.text}, ${REPLY_SNIPPET_LENGTH})`
 		})
@@ -423,6 +431,38 @@ export async function updateConversationStatus(
 	)
 	publishToAdmins(systemMessage)
 	return updated
+}
+
+// ИИ-бот передаёт беседу оператору (ai-bot/service.ts) — дальше бот в этой
+// беседе больше не отвечает, только оператор. summary — adminOnly системное
+// сообщение для оператора (не видно посетителю), коротко о чём шла речь, раз
+// оператор не читал переписку с начала
+export async function handoffConversationToOperator(conversationId: number, summary: string) {
+	await db
+		.update(conversations)
+		.set({ aiHandedOff: true })
+		.where(eq(conversations.id, conversationId))
+	const systemMessage = await addMessage(
+		conversationId,
+		'system',
+		`ИИ передал беседу оператору: ${summary}`,
+		undefined,
+		undefined,
+		true
+	)
+	publishToAdmins(systemMessage)
+}
+
+// ИИ-бот молчит, если уже передавал беседу раньше ИЛИ за ней уже закреплён
+// оператор (назначение — явный сигнал, что человек уже в теме; не хотим,
+// чтобы бот влезал поверх живого разговора)
+export async function shouldAiRespond(conversationId: number) {
+	const [row] = await db
+		.select({ aiHandedOff: conversations.aiHandedOff, assigneeId: conversations.assigneeId })
+		.from(conversations)
+		.where(eq(conversations.id, conversationId))
+	if (!row) return false
+	return !row.aiHandedOff && row.assigneeId === null
 }
 
 // безвозвратно: сообщения удаляются вместе с беседой (reply_to_id у них —

@@ -1,13 +1,14 @@
 import { Elysia } from 'elysia'
 import jwt from 'jsonwebtoken'
+import { generateBotReply } from '../ai-bot/service'
 import { verifyToken } from '../auth/guard'
-import { findBotResponseByTrigger } from '../bot-responses/service'
 import { allowVisitorMessage } from '../chat/rate-limit'
 import {
 	addMessage,
 	conversationExists,
 	getConversationChannel,
-	replyTargetExists
+	replyTargetExists,
+	shouldAiRespond
 } from '../chat/service'
 import {
 	findConversationIdBySessionId,
@@ -257,18 +258,30 @@ export const wsRoutes = new Elysia().ws('/ws', {
 
 			notifyAdminsOfVisitorMessage(conversationId, text)
 
-			// точное совпадение с триггером (например, клик по quick-reply кнопке) —
-			// бот отвечает сам, без участия оператора; не совпало — ждёт оператора как раньше
-			const botResponse = text ? await findBotResponseByTrigger(text) : null
-			if (botResponse) {
+			// ИИ-бот (DeepSeek, function calling по products/service + передача
+			// оператору) отвечает сам, без участия оператора — пока сам не решит
+			// передать беседу (handoff_to_operator) или за ним уже не закреплён
+			// оператор. Не настроен/упал/уже передано раньше — тихо ждёт оператора,
+			// как было с прежним точным триггером bot-responses
+			if (text && (await shouldAiRespond(conversationId))) {
 				const lang = getLang(body)
-				const answer = lang === 'ro' ? botResponse.answerRo : botResponse.answerRu
-				const botMsg = await addMessage(conversationId, 'bot', answer)
-				const botPayload = JSON.stringify(botMsg)
-				ws.publish(`conversation:${conversationId}`, botPayload)
-				ws.publish('admin:global', botPayload)
-				// ws.publish не шлёт отправителю его же публикацию, а получатель бота — он и есть
-				ws.send(botPayload)
+				const reply = await generateBotReply(conversationId, text, lang)
+				if (reply) {
+					const botMsg = await addMessage(
+						conversationId,
+						'bot',
+						reply.text,
+						undefined,
+						undefined,
+						false,
+						reply.actions.length ? reply.actions : null
+					)
+					const botPayload = JSON.stringify(botMsg)
+					ws.publish(`conversation:${conversationId}`, botPayload)
+					ws.publish('admin:global', botPayload)
+					// ws.publish не шлёт отправителю его же публикацию, а получатель бота — он и есть
+					ws.send(botPayload)
+				}
 			}
 		}
 

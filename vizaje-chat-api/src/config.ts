@@ -84,3 +84,13 @@ export const MEILISEARCH_HOST = (process.env.MEILISEARCH_HOST || '').replace(/\/
 // search-key (не master key) из site-meilisearch-prod.env легаси-проекта
 export const MEILISEARCH_SEARCH_KEY = process.env.MEILISEARCH_SEARCH_KEY || null
 export const MEILISEARCH_INDEX = process.env.MEILISEARCH_INDEX || null
+
+// ИИ-бот (см. ai-bot/) — отвечает посетителю вместо точного триггера
+// bot-responses: знает о товаре через products/service (function calling),
+// сам решает, когда передать беседу оператору. Опционально: без ключа
+// посетитель просто не получает автоответ, ждёт оператора как раньше
+export const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || null
+export const DEEPSEEK_BASE_URL = (
+	process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com'
+).replace(/\/$/, '')
+export const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat'
