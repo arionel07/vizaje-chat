@@ -2,6 +2,7 @@ import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '../db/client'
 import { adminUsers, conversations, messages } from '../db/schema'
+import { getAiBotEnabled } from '../settings/service'
 import { publishMessage, publishToAdmins } from './events'
 
 // список операторов для назначения бесед
@@ -453,10 +454,12 @@ export async function handoffConversationToOperator(conversationId: number, summ
 	publishToAdmins(systemMessage)
 }
 
-// ИИ-бот молчит, если уже передавал беседу раньше ИЛИ за ней уже закреплён
-// оператор (назначение — явный сигнал, что человек уже в теме; не хотим,
-// чтобы бот влезал поверх живого разговора)
+// ИИ-бот молчит, если: общий выключатель в настройках выключен (предохранитель
+// оператора, см. settings/service.ts), уже передавал эту беседу раньше, или
+// за ней уже закреплён оператор (назначение — явный сигнал, что человек уже
+// в теме; не хотим, чтобы бот влезал поверх живого разговора)
 export async function shouldAiRespond(conversationId: number) {
+	if (!(await getAiBotEnabled())) return false
 	const [row] = await db
 		.select({ aiHandedOff: conversations.aiHandedOff, assigneeId: conversations.assigneeId })
 		.from(conversations)

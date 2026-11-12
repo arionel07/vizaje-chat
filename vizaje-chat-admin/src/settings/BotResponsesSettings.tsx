@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react'
 import {
 	createBotResponse,
 	deleteBotResponse,
+	fetchAiBotEnabled,
 	fetchBotResponses,
+	updateAiBotEnabled,
 	updateBotResponse,
 	type BotResponse,
 	type BotResponseInput
@@ -14,8 +16,80 @@ const inputClass =
 
 const EMPTY_FORM: BotResponseInput = { triggerText: '', answerRu: '', answerRo: '' }
 
-// Автоответы бота: точное совпадение сообщения посетителя (или клика по
-// quick-reply кнопке виджета) с triggerText → бот отвечает сам, без оператора
+// Выключатель-предохранитель для ИИ-бота (ai-bot/) — выключить сразу для всех
+// бесед, не трогая .env/деплой. Список ниже — старые точные автоответы
+// (triggerText), которые ИИ-бот полностью заменил в потоке сообщений; CRUD
+// оставлен на случай отката, но сейчас эти записи ни на что не влияют
+function AiBotToggle({ token }: { token: string }) {
+	const [enabled, setEnabled] = useState<boolean | null>(null)
+	const [loadFailed, setLoadFailed] = useState(false)
+	const [saving, setSaving] = useState(false)
+	const [error, setError] = useState<string | null>(null)
+
+	useEffect(() => {
+		fetchAiBotEnabled(token)
+			.then(setEnabled)
+			.catch(() => setLoadFailed(true))
+	}, [token])
+
+	async function toggle() {
+		if (enabled === null || saving) return
+		setSaving(true)
+		setError(null)
+		try {
+			setEnabled(await updateAiBotEnabled(token, !enabled))
+		} catch (e) {
+			setError(e instanceof Error ? e.message : 'Не удалось сохранить')
+		} finally {
+			setSaving(false)
+		}
+	}
+
+	return (
+		<div className="mb-5 border-b border-zinc-200 pb-5 dark:border-zinc-800">
+			{loadFailed && (
+				<p role="alert" className="text-sm text-red-600 dark:text-red-400">
+					Не удалось загрузить настройку ИИ-бота.
+				</p>
+			)}
+			{enabled !== null && (
+				<>
+					<label className="flex max-w-sm items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3.5 py-3 dark:border-zinc-800">
+						<span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+							ИИ-бот отвечает посетителям
+						</span>
+						<button
+							type="button"
+							role="switch"
+							aria-checked={enabled}
+							onClick={toggle}
+							disabled={saving}
+							className={`relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+								enabled ? 'bg-zinc-900 dark:bg-white' : 'bg-zinc-300 dark:bg-zinc-700'
+							}`}
+						>
+							<span
+								className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform dark:bg-zinc-900 ${
+									enabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+								}`}
+							/>
+						</button>
+					</label>
+					<p className="mt-2 max-w-md text-xs text-zinc-500 dark:text-zinc-400">
+						Выключено — посетитель сразу ждёт оператора, без автоответа. Работает
+						мгновенно для всех новых сообщений, без перезапуска сервера.
+					</p>
+					{error && (
+						<p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
+							{error}
+						</p>
+					)}
+				</>
+			)}
+		</div>
+	)
+}
+
 export function BotResponsesSettings({ token }: { token: string }) {
 	const [items, setItems] = useState<BotResponse[]>([])
 	const [loading, setLoading] = useState(true)
@@ -87,6 +161,8 @@ export function BotResponsesSettings({ token }: { token: string }) {
 
 	return (
 		<div className="px-4 py-4 md:px-6">
+			<AiBotToggle token={token} />
+
 			{loadFailed && (
 				<div
 					role="alert"

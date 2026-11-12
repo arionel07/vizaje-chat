@@ -252,3 +252,37 @@ describe('WS: ИИ-бот в реальном потоке сообщений', 
 		admin.close()
 	})
 })
+
+describe('GET/PUT /admin/settings/ai-bot — общий выключатель', () => {
+	test('по умолчанию включён, без токена — 401', async () => {
+		const res = await api('/admin/settings/ai-bot')
+		expect(res.status).toBe(401)
+
+		const get = await api('/admin/settings/ai-bot', { token: adminToken })
+		expect(get.body).toEqual({ enabled: true })
+	})
+
+	test('выключение немедленно останавливает ответы бота в потоке сообщений', async () => {
+		const put = await api('/admin/settings/ai-bot', {
+			method: 'PUT',
+			token: adminToken,
+			body: { enabled: false }
+		})
+		expect(put.body).toEqual({ enabled: false })
+
+		const v = await makeVisitor()
+		const visitor = await connectWs(v.token)
+		setDeepseekFetcher(
+			scriptedModel([
+				{ toolCalls: [{ name: 'respond_to_visitor', args: { reply: 'не должно прийти', actions: [] } }] }
+			])
+		)
+		visitor.send({ text: 'привет' })
+		await sleep(300)
+		expect(visitor.messages.filter(m => m.sender === 'bot')).toHaveLength(0)
+		visitor.close()
+
+		// возвращаем как было, чтобы не сломать порядок прочих тестов файла
+		await api('/admin/settings/ai-bot', { method: 'PUT', token: adminToken, body: { enabled: true } })
+	})
+})

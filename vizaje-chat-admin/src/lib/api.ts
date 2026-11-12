@@ -377,6 +377,27 @@ export async function updateConversationDeleteEnabled(token: string, enabled: bo
 	return ((await res.json()) as { enabled: boolean }).enabled
 }
 
+// общий выключатель ИИ-бота — включён по умолчанию, предохранитель оператора
+export async function fetchAiBotEnabled(token: string) {
+	const res = await fetch(`${API_URL}/admin/settings/ai-bot`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return ((await res.json()) as { enabled: boolean }).enabled
+}
+
+export async function updateAiBotEnabled(token: string, enabled: boolean) {
+	const res = await fetch(`${API_URL}/admin/settings/ai-bot`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify({ enabled })
+	})
+	handleUnauthorized(res)
+	assertOk(res)
+	return ((await res.json()) as { enabled: boolean }).enabled
+}
+
 export type CannedResponse = {
 	id: number
 	title: string

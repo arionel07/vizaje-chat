@@ -201,6 +201,31 @@ export async function setConversationDeleteEnabled(input: unknown): Promise<bool
 	return input
 }
 
+// общий выключатель ИИ-бота (ai-bot/) — предохранитель для оператора:
+// выключить сразу для всех бесед, не трогая .env/деплой. Включено по
+// умолчанию (ровно так же бот не ответит, если не задан DEEPSEEK_API_KEY)
+const AI_BOT_ENABLED_KEY = 'aiBotEnabled'
+
+export async function getAiBotEnabled(): Promise<boolean> {
+	const [row] = await db
+		.select({ value: settings.value })
+		.from(settings)
+		.where(eq(settings.key, AI_BOT_ENABLED_KEY))
+	return row ? row.value !== false : true
+}
+
+export async function setAiBotEnabled(input: unknown): Promise<boolean> {
+	if (typeof input !== 'boolean') throw new Error('enabled должен быть boolean')
+	await db
+		.insert(settings)
+		.values({ key: AI_BOT_ENABLED_KEY, value: input, updatedAt: new Date() })
+		.onConflictDoUpdate({
+			target: settings.key,
+			set: { value: input, updatedAt: new Date() }
+		})
+	return input
+}
+
 // человекочитаемая сводка для баннера в виджете, например "Пн–Пт 09:00–18:00, Сб 10:00–14:00":
 // склеивает подряд идущие дни с одинаковым интервалом в один диапазон
 export function summarizeSchedule(schedule: Schedule) {

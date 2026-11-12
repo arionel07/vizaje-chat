@@ -1,9 +1,11 @@
 import { Elysia, t } from 'elysia'
 import { verifyToken } from '../auth/guard'
 import {
+	getAiBotEnabled,
 	getConversationDeleteEnabled,
 	getSchedule,
 	getWidgetTheme,
+	setAiBotEnabled,
 	setConversationDeleteEnabled,
 	setSchedule,
 	setWidgetTheme
@@ -95,6 +97,26 @@ export const settingsRoutes = new Elysia()
 				return { error: 'Unauthorized' }
 			}
 			return { enabled: await setConversationDeleteEnabled(body.enabled) }
+		},
+		{ body: t.Object({ enabled: t.Boolean() }) }
+	)
+	.get('/admin/settings/ai-bot', async ({ headers, set }) => {
+		const admin = verifyToken(headers.authorization)
+		if (!admin) {
+			set.status = 401
+			return { error: 'Unauthorized' }
+		}
+		return { enabled: await getAiBotEnabled() }
+	})
+	.put(
+		'/admin/settings/ai-bot',
+		async ({ headers, body, set }) => {
+			const admin = verifyToken(headers.authorization)
+			if (!admin) {
+				set.status = 401
+				return { error: 'Unauthorized' }
+			}
+			return { enabled: await setAiBotEnabled(body.enabled) }
 		},
 		{ body: t.Object({ enabled: t.Boolean() }) }
 	)
