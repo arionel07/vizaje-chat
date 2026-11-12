@@ -351,7 +351,9 @@ export async function getConversationCounts(meId?: number) {
 }
 
 // назначить беседу оператору или снять назначение (assigneeId: null).
-// пишет системное сообщение и публикует его по WS, как при смене статуса
+// adminOnly — посетителю не показываем и не публикуем: email оператора —
+// внутренняя информация, посетителю незачем видеть, кто именно отвечает
+// (тот же приём, что у системных сообщений о статусе беседы)
 export async function updateConversationAssignee(
 	conversationId: number,
 	assigneeId: number | null
@@ -377,11 +379,29 @@ export async function updateConversationAssignee(
 		'system',
 		assigneeEmail
 			? `Беседа назначена на ${assigneeEmail}`
-			: 'Назначение беседы снято'
+			: 'Назначение беседы снято',
+		undefined,
+		undefined,
+		true
 	)
-	publishMessage(conversationId, systemMessage)
+	publishToAdmins(systemMessage)
 
 	return { ...updated, assigneeEmail }
+}
+
+// автоматическое назначение: беседа всегда закреплена за тем, кто в ней
+// последний отвечал — без отдельного клика в выпадающем списке. Подхватил
+// коллегу на время/сменил — назначение само переходит на того, кто сейчас
+// пишет; ничего не делаем, только если это и так уже тот же оператор
+// (не плодить системные сообщения на каждую реплику одного человека подряд)
+export async function autoAssignOnReply(conversationId: number, adminId: number) {
+	const [row] = await db
+		.select({ assigneeId: conversations.assigneeId })
+		.from(conversations)
+		.where(eq(conversations.id, conversationId))
+	if (row && row.assigneeId !== adminId) {
+		await updateConversationAssignee(conversationId, adminId)
+	}
 }
 
 // Оператор прочитал беседу. Возвращает серверное время отметки, null — беседы нет

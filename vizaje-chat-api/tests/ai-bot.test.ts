@@ -170,7 +170,7 @@ describe('generateBotReply — служебные случаи', () => {
 		// каждый ход — просто поиск, respond_to_visitor так и не вызван
 		setDeepseekFetcher(scriptedModel([{ toolCalls: [{ name: 'search_product', args: { query: 'x' } }] }]))
 		const reply = await generateBotReply(v.conversationId, 'x', 'ru')
-		expect(reply?.text).toContain('оператора')
+		expect(reply?.text).toContain('коллегу')
 
 		const [conv] = await db.select().from(conversations).where(eq(conversations.id, v.conversationId))
 		expect(conv?.aiHandedOff).toBe(true)
@@ -298,7 +298,7 @@ describe('вложение без текста/с текстом — сразу 
 
 		const reply = await generateBotReply(v.conversationId, 'а есть такой товар?', 'ru', true)
 		expect(deepseekCalled).toBe(false)
-		expect(reply?.text).toContain('оператора')
+		expect(reply?.text).toContain('коллега')
 
 		const [conv] = await db.select().from(conversations).where(eq(conversations.id, v.conversationId))
 		expect(conv?.aiHandedOff).toBe(true)

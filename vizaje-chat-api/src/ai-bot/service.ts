@@ -3,8 +3,31 @@ import type { MessageAction } from '../chat/service'
 import { AI_HANDOFF_PREFIX, handoffConversationToOperator } from '../chat/service'
 import { db } from '../db/client'
 import { messages } from '../db/schema'
+import { getSchedule, getStatus } from '../settings/service'
 import { chatCompletion, isDeepseekConfigured, type ChatMessage, type ToolDef } from './deepseek'
 import { runTool, TOOLS as SEARCH_AND_HANDOFF_TOOLS } from './tools'
+
+// при передаче оператору вне рабочего графика — не делаем вид, что кто-то
+// ответит прямо сейчас: честно и тепло объясняем, когда начнётся смена.
+// Не полагаемся на то, что модель сама вспомнит график — считаем сами и
+// дописываем к её ответу, раз handoff вообще случился
+async function appendScheduleNoteIfOffline(text: string, lang: 'ru' | 'ro'): Promise<string> {
+	const schedule = await getSchedule().catch(() => null)
+	if (!schedule) return text
+	const status = getStatus(schedule)
+	if (status.online || !status.nextOnlineAt) return text
+	const when = new Intl.DateTimeFormat(lang === 'ro' ? 'ro-RO' : 'ru-RU', {
+		timeZone: 'Europe/Chisinau',
+		weekday: 'short',
+		hour: '2-digit',
+		minute: '2-digit'
+	}).format(new Date(status.nextOnlineAt))
+	const note =
+		lang === 'ro'
+			? ` Chiar acum echipa este offline — un coleg vă răspunde la următoarea tură, ${when}. Mulțumim pentru răbdare! 💛`
+			: ` Сейчас команда не онлайн — коллега ответит в начале следующей смены, ${when}. Спасибо, что подождёте! 💛`
+	return `${text}${note}`
+}
 
 // финальный ответ посетителю отдаётся только через этот tool-call, не
 // обычным текстом — так гарантированно получаем структуру (текст + кнопки),
@@ -97,13 +120,11 @@ async function handoffForAttachment(conversationId: number, lang: 'ru' | 'ro'): 
 		conversationId,
 		'Посетитель прислал фото/файл — ИИ не видит вложения, нужна ручная проверка'
 	)
-	return {
-		text:
-			lang === 'ro'
-				? 'Am primit fișierul, dar nu pot să-l examinez — v-am conectat cu un operator.'
-				: 'Файл получил, но не могу его посмотреть — подключил оператора.',
-		actions: []
-	}
+	const text =
+		lang === 'ro'
+			? 'Mulțumim pentru imagine! 📷 Din păcate, eu încă nu pot să văd poze — dar las-o aici, colegul meu se uită cu drag și vă ajută.'
+			: 'Спасибо за картинку! 📷 Я, к сожалению, пока не умею их смотреть — но не переживайте, коллега обязательно посмотрит и поможет.'
+	return { text: await appendScheduleNoteIfOffline(text, lang), actions: [] }
 }
 
 export async function generateBotReply(
@@ -130,6 +151,7 @@ export async function generateBotReply(
 			if (calls.length === 0) break // модель не вызвала ни одной функции — нечего отдать
 
 			let finalReply: BotReply | null = null
+			let handedOff = false
 			for (const call of calls) {
 				const args = JSON.parse(call.function.arguments || '{}') as Record<string, unknown>
 				if (call.function.name === 'respond_to_visitor') {
@@ -137,10 +159,16 @@ export async function generateBotReply(
 					history.push({ role: 'tool', content: JSON.stringify({ ok: true }), tool_call_id: call.id })
 					continue
 				}
+				if (call.function.name === 'handoff_to_operator') handedOff = true
 				const result = await runTool(call.function.name, args, conversationId)
 				history.push({ role: 'tool', content: result, tool_call_id: call.id })
 			}
-			if (finalReply) return finalReply
+			if (finalReply) {
+				// передача оператору вне рабочего графика — честно дописываем, когда
+				// реально ответят, не полагаясь на то, что модель сама это учла
+				if (handedOff) finalReply.text = await appendScheduleNoteIfOffline(finalReply.text, lang)
+				return finalReply
+			}
 		}
 	} catch (e) {
 		console.error('AI bot error:', e)
@@ -150,13 +178,11 @@ export async function generateBotReply(
 	// модель так и не ответила за отведённые ходы — не молчим, передаём
 	// оператору сами, с честной пометкой, а не изображаем, что бот справился
 	await handoffConversationToOperator(conversationId, 'ИИ не смог сформулировать ответ за отведённое число ходов')
-	return {
-		text:
-			lang === 'ro'
-				? 'Îmi pare rău, nu pot răspunde acum la asta — v-am conectat cu un operator.'
-				: 'Извините, не могу сейчас ответить на этот вопрос — подключил оператора.',
-		actions: []
-	}
+	const text =
+		lang === 'ro'
+			? 'Hmm, aici am nevoie de ajutor uman 🙈 Chem imediat un coleg — vă ajută cu drag!'
+			: 'Хм, тут мне нужна помощь человека 🙈 Уже зову коллегу — он обязательно поможет!'
+	return { text: await appendScheduleNoteIfOffline(text, lang), actions: [] }
 }
 
 export type AiHandoff = { conversationId: number; reason: string; createdAt: Date }

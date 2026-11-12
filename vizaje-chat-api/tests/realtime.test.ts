@@ -32,8 +32,10 @@ describe('обмен сообщениями', () => {
 		})
 		await tab2.waitFor(m => m.text === 'привет')
 		await sleep(150)
-		// ws.publish не шлёт отправителю сообщение; приходит только подтверждение sent
-		expect(tab1.messages.filter(m => m.sender)).toHaveLength(0)
+		// ws.publish не шлёт отправителю его же сообщение — приходит только
+		// подтверждение sent (системное сообщение автоназначения — отдельная
+		// рассылка через server.publish, без такого исключения, тоже дойдёт)
+		expect(tab1.messages.filter(m => m.text === 'привет')).toHaveLength(0)
 		expect(tab1.messages.filter(m => m.type === 'sent')).toHaveLength(1)
 		expect(visitor.messages.filter(m => m.text === 'привет')).toHaveLength(1)
 

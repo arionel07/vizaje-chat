@@ -5,6 +5,7 @@ import { verifyToken } from '../auth/guard'
 import { allowVisitorMessage } from '../chat/rate-limit'
 import {
 	addMessage,
+	autoAssignOnReply,
 	conversationExists,
 	getConversationChannel,
 	replyTargetExists,
@@ -34,7 +35,7 @@ type VisitorStore = {
 	// сообщение «шестым» (проверено тестом на лимит сообщений)
 	resolving: Promise<number | null> | null
 }
-type ConnStore = VisitorStore | { type: 'admin'; email: string }
+type ConnStore = VisitorStore | { type: 'admin'; id: number; email: string }
 
 // allowCreate=false (typing): только читает — беседа должна уже существовать,
 // иначе просто нечего транслировать. allowCreate=true (сообщение): при
@@ -168,7 +169,7 @@ export const wsRoutes = new Elysia().ws('/ws', {
 				ws.close()
 				return
 			}
-			store = { type: 'admin', email: admin.email }
+			store = { type: 'admin', id: admin.sub, email: admin.email }
 		}
 
 		// кладём запись СРАЗУ, до какого-либо await ниже: клиент может прислать
@@ -305,6 +306,12 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			ws.publish(`conversation:${conversationId}`, payload)
 			ws.publish('admin:global', payload)
 			sendAck(ws, msg, clientId)
+
+			// беседа ещё ни за кем не закреплена — значит теперь она закреплена
+			// за тем, кто только что в неё ответил, без отдельного клика в списке
+			autoAssignOnReply(conversationId, store.id).catch(error =>
+				console.error('Failed to auto-assign conversation:', error)
+			)
 
 			// беседа из Telegram/Instagram — оператор отвечает прямо из админки, без
 			// переключения в сам канал; дублируем ответ туда, best-effort
