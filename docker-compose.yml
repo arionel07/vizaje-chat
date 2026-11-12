@@ -43,6 +43,11 @@ services:
       MEILISEARCH_HOST: ${MEILISEARCH_HOST:-}
       MEILISEARCH_SEARCH_KEY: ${MEILISEARCH_SEARCH_KEY:-}
       MEILISEARCH_INDEX: ${MEILISEARCH_INDEX:-}
+      # ИИ-бот (DeepSeek) — см. deploy/DEPLOY.md, раздел «ИИ-бот (DeepSeek)».
+      # Опционально — без ключа посетитель просто не получает автоответ
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
     volumes:
       - uploads_data:/app/uploads
     networks:
