@@ -286,3 +286,54 @@ describe('GET/PUT /admin/settings/ai-bot — общий выключатель',
 		await api('/admin/settings/ai-bot', { method: 'PUT', token: adminToken, body: { enabled: true } })
 	})
 })
+
+describe('вложение без текста/с текстом — сразу хэндофф, DeepSeek не дёргаем', () => {
+	test('фото + подпись → хэндофф без единого обращения к DeepSeek', async () => {
+		const v = await makeVisitor()
+		let deepseekCalled = false
+		setDeepseekFetcher(async () => {
+			deepseekCalled = true
+			throw new Error('не должен был вызваться')
+		})
+
+		const reply = await generateBotReply(v.conversationId, 'а есть такой товар?', 'ru', true)
+		expect(deepseekCalled).toBe(false)
+		expect(reply?.text).toContain('оператора')
+
+		const [conv] = await db.select().from(conversations).where(eq(conversations.id, v.conversationId))
+		expect(conv?.aiHandedOff).toBe(true)
+
+		// восстанавливаем рабочий fetcher, чтобы не сломать следующие тесты файла
+		setDeepseekFetcher(
+			scriptedModel([{ toolCalls: [{ name: 'respond_to_visitor', args: { reply: 'ok', actions: [] } }] }])
+		)
+	})
+})
+
+describe('GET /admin/ai-bot/handoffs — журнал передач оператору', () => {
+	test('без токена → 401; после хэндоффа беседа появляется в журнале', async () => {
+		const unauth = await api('/admin/ai-bot/handoffs')
+		expect(unauth.status).toBe(401)
+
+		const v = await makeVisitor()
+		const reply = await generateBotReply(v.conversationId, 'фото без текста', 'ru', true)
+		expect(reply).not.toBeNull()
+
+		const res = await api('/admin/ai-bot/handoffs', { token: adminToken })
+		expect(res.status).toBe(200)
+		const entry = res.body.find((h: { conversationId: number }) => h.conversationId === v.conversationId)
+		expect(entry).toBeDefined()
+		expect(entry.reason).toContain('фото')
+	})
+})
+
+describe('GET /admin/conversations — включает aiHandedOff', () => {
+	test('после хэндоффа у беседы aiHandedOff: true в списке', async () => {
+		const v = await makeVisitor()
+		await generateBotReply(v.conversationId, 'фото', 'ru', true)
+
+		const res = await api('/admin/conversations', { token: adminToken })
+		const conv = res.body.find((c: { id: number }) => c.id === v.conversationId)
+		expect(conv?.aiHandedOff).toBe(true)
+	})
+})

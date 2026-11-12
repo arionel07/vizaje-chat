@@ -82,6 +82,10 @@ export type Conversation = {
 	visitorLastReadAt: string | null // когда посетитель видел сообщения — для «Прочитано»
 	assigneeId: number | null
 	assigneeEmail: string | null
+	// ИИ-бот передавал эту беседу оператору (ai-bot/) — бейдж в списке, пока
+	// беседа открыта и не назначена: как только оператор берёт её или закрывает,
+	// бейдж прячется, хотя в БД флаг остаётся true навсегда
+	aiHandedOff: boolean
 	lastMessageText: string | null
 	lastMessageSender: string | null
 	lastMessageHasAttachment: boolean
@@ -455,6 +459,18 @@ export async function deleteCannedResponse(token: string, id: number) {
 	})
 	handleUnauthorized(res)
 	await parseOrThrow<{ ok: true }>(res)
+}
+
+// журнал передач ИИ-бота оператору (reasonSummary из handoff_to_operator) —
+// настройки, чтобы видеть, на чём бот спотыкается, и точечно править промпт
+export type AiHandoff = { conversationId: number; reason: string; createdAt: string }
+
+export async function fetchAiHandoffs(token: string) {
+	const res = await fetch(`${API_URL}/admin/ai-bot/handoffs`, {
+		headers: { Authorization: `Bearer ${token}` }
+	})
+	handleUnauthorized(res)
+	return parseOrThrow<AiHandoff[]>(res)
 }
 
 export type BotResponse = {

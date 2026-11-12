@@ -1,6 +1,7 @@
 import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 import { ALLOWED_ORIGINS } from './config'
+import { aiBotRoutes } from './routes/ai-bot.routes'
 import { analyticsRoutes } from './routes/analytics.routes'
 import { authRoutes } from './routes/auth.routes'
 import { botResponsesRoutes } from './routes/bot-responses.routes'
@@ -42,6 +43,7 @@ export function createApp() {
 		.use(cannedResponsesRoutes)
 		.use(botResponsesRoutes)
 		.use(analyticsRoutes)
+		.use(aiBotRoutes)
 		.use(uploadsRoutes)
 		.use(webPushRoutes)
 		.use(wsRoutes)

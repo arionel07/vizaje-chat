@@ -263,9 +263,9 @@ export const wsRoutes = new Elysia().ws('/ws', {
 			// передать беседу (handoff_to_operator) или за ним уже не закреплён
 			// оператор. Не настроен/упал/уже передано раньше — тихо ждёт оператора,
 			// как было с прежним точным триггером bot-responses
-			if (text && (await shouldAiRespond(conversationId))) {
+			if ((text || attachment) && (await shouldAiRespond(conversationId))) {
 				const lang = getLang(body)
-				const reply = await generateBotReply(conversationId, text, lang)
+				const reply = await generateBotReply(conversationId, text, lang, Boolean(attachment))
 				if (reply) {
 					const botMsg = await addMessage(
 						conversationId,

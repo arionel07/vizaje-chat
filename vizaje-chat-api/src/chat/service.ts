@@ -2,6 +2,7 @@ import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '../db/client'
 import { adminUsers, conversations, messages } from '../db/schema'
+import { notifyAdminsOfAiHandoff } from '../push-tokens/notify'
 import { getAiBotEnabled } from '../settings/service'
 import { publishMessage, publishToAdmins } from './events'
 
@@ -291,6 +292,7 @@ export async function getConversations({
 			visitorLastReadAt: conversations.visitorLastReadAt,
 			assigneeId: conversations.assigneeId,
 			assigneeEmail: adminUsers.email,
+			aiHandedOff: conversations.aiHandedOff,
 			lastMessageText: sql<string | null>`(
 				select m.text from messages m
 				where m.conversation_id = ${convId}
@@ -438,6 +440,11 @@ export async function updateConversationStatus(
 // беседе больше не отвечает, только оператор. summary — adminOnly системное
 // сообщение для оператора (не видно посетителю), коротко о чём шла речь, раз
 // оператор не читал переписку с начала
+// общий префикс системного сообщения о передаче — по нему же ai-bot/service.ts
+// находит такие сообщения для журнала «Передачи ИИ» в настройках, не заводя
+// отдельную таблицу под то, что и так уже лежит в messages
+export const AI_HANDOFF_PREFIX = 'ИИ передал беседу оператору: '
+
 export async function handoffConversationToOperator(conversationId: number, summary: string) {
 	await db
 		.update(conversations)
@@ -446,12 +453,16 @@ export async function handoffConversationToOperator(conversationId: number, summ
 	const systemMessage = await addMessage(
 		conversationId,
 		'system',
-		`ИИ передал беседу оператору: ${summary}`,
+		`${AI_HANDOFF_PREFIX}${summary}`,
 		undefined,
 		undefined,
 		true
 	)
 	publishToAdmins(systemMessage)
+	// best-effort, не блокирует и не роняет хэндофф при сбое пуша
+	notifyAdminsOfAiHandoff(conversationId, summary).catch(error =>
+		console.error('Failed to notify admins of AI handoff:', error)
+	)
 }
 
 // ИИ-бот молчит, если: общий выключатель в настройках выключен (предохранитель

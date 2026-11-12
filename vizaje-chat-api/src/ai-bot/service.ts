@@ -1,5 +1,8 @@
+import { and, desc, eq, like } from 'drizzle-orm'
 import type { MessageAction } from '../chat/service'
-import { handoffConversationToOperator } from '../chat/service'
+import { AI_HANDOFF_PREFIX, handoffConversationToOperator } from '../chat/service'
+import { db } from '../db/client'
+import { messages } from '../db/schema'
 import { chatCompletion, isDeepseekConfigured, type ChatMessage, type ToolDef } from './deepseek'
 import { runTool, TOOLS as SEARCH_AND_HANDOFF_TOOLS } from './tools'
 
@@ -54,9 +57,10 @@ const SYSTEM_PROMPT = (langName: string) => `Ты — вежливый асси�
 5. Если посетитель интересуется наличием именно в магазине (в т.ч. после клика по кнопке выше) — тепло ответь, что это уточнит оператор, и вызови handoff_to_operator.
 6. Если посетитель жалуется на брак, возврат или проблему с заказом — НЕ пытайся решить сам. Сразу тепло извинись, скажи, что по этому вопросу ответит оператор, и вызови handoff_to_operator с кратким описанием проблемы в reasonSummary.
 7. Если посетитель сам просит оператора/живого человека — подтверди тепло и вызови handoff_to_operator.
-8. Перед вызовом handoff_to_operator ВСЕГДА сначала скажи что-то тёплое и по делу в reply этого же хода — handoff не заменяет ответ, а дополняет его. Человек должен почувствовать, что его услышали, а не что его резко переключили.
-9. Там, где уместно, заканчивай ответ коротким уточняющим вопросом — не обрывай разговор голым фактом.
-10. Отвечай коротко и по-дружески, без канцелярита. Финальный ответ — только через respond_to_visitor.`
+8. Если посетитель говорит, что твой ответ/найденный товар — не то, что он искал (например «нет, не то», «это не тот товар», «не подходит») — не гадай со второй попытки: извинись, что не угадал, и вызови handoff_to_operator с кратким описанием, что именно искал посетитель и чем твой ответ не подошёл.
+9. Перед вызовом handoff_to_operator ВСЕГДА сначала скажи что-то тёплое и по делу в reply этого же хода — handoff не заменяет ответ, а дополняет его. Человек должен почувствовать, что его услышали, а не что его резко переключили.
+10. Там, где уместно, заканчивай ответ коротким уточняющим вопросом — не обрывай разговор голым фактом.
+11. Отвечай коротко и по-дружески, без канцелярита. Финальный ответ — только через respond_to_visitor.`
 
 export type BotReply = { text: string; actions: MessageAction[] }
 
@@ -85,12 +89,31 @@ function parseRespondArgs(raw: string): BotReply | null {
 
 // null — ИИ не настроен или упал (сеть/ошибка DeepSeek): посетитель просто
 // не получает автоответ и ждёт оператора, как было до этой фичи
+// бот не видит вложения (фото/файл) — незачем гонять его по search_product
+// вслепую на пустом тексте вроде «а такой есть?», впустую тратя ходы и деньги,
+// раз всё равно закончится хэндоффом. Сразу передаём оператору
+async function handoffForAttachment(conversationId: number, lang: 'ru' | 'ro'): Promise<BotReply> {
+	await handoffConversationToOperator(
+		conversationId,
+		'Посетитель прислал фото/файл — ИИ не видит вложения, нужна ручная проверка'
+	)
+	return {
+		text:
+			lang === 'ro'
+				? 'Am primit fișierul, dar nu pot să-l examinez — v-am conectat cu un operator.'
+				: 'Файл получил, но не могу его посмотреть — подключил оператора.',
+		actions: []
+	}
+}
+
 export async function generateBotReply(
 	conversationId: number,
 	visitorText: string,
-	lang: 'ru' | 'ro'
+	lang: 'ru' | 'ro',
+	hasAttachment = false
 ): Promise<BotReply | null> {
 	if (!isDeepseekConfigured()) return null
+	if (hasAttachment) return handoffForAttachment(conversationId, lang)
 
 	const langName = lang === 'ro' ? 'румынский (română)' : 'русский'
 	const history: ChatMessage[] = [
@@ -134,4 +157,26 @@ export async function generateBotReply(
 				: 'Извините, не могу сейчас ответить на этот вопрос — подключил оператора.',
 		actions: []
 	}
+}
+
+export type AiHandoff = { conversationId: number; reason: string; createdAt: Date }
+
+const HANDOFF_LOG_LIMIT = 100
+
+// журнал всех передач ИИ оператору (настройки админки) — чтобы было видно,
+// на чём бот спотыкается, и можно было точечно поправить промпт/список
+// брендов. Без отдельной таблицы: эти сообщения уже лежат в messages как
+// adminOnly-системные (см. AI_HANDOFF_PREFIX в chat/service.ts)
+export async function getRecentAiHandoffs(): Promise<AiHandoff[]> {
+	const rows = await db
+		.select({ conversationId: messages.conversationId, text: messages.text, createdAt: messages.createdAt })
+		.from(messages)
+		.where(and(eq(messages.sender, 'system'), like(messages.text, `${AI_HANDOFF_PREFIX}%`)))
+		.orderBy(desc(messages.id))
+		.limit(HANDOFF_LOG_LIMIT)
+	return rows.map(r => ({
+		conversationId: r.conversationId,
+		reason: r.text.slice(AI_HANDOFF_PREFIX.length),
+		createdAt: r.createdAt
+	}))
 }

@@ -1,15 +1,18 @@
-import { Pencil, Plus, Trash2, TriangleAlert, X } from 'lucide-react'
+import { Bot, Pencil, Plus, Trash2, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import {
 	createBotResponse,
 	deleteBotResponse,
 	fetchAiBotEnabled,
+	fetchAiHandoffs,
 	fetchBotResponses,
 	updateAiBotEnabled,
 	updateBotResponse,
+	type AiHandoff,
 	type BotResponse,
 	type BotResponseInput
 } from '../lib/api'
+import { formatListTime } from '../lib/format'
 
 const inputClass =
 	'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/15 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-300 dark:focus:ring-zinc-300/20'
@@ -90,6 +93,59 @@ function AiBotToggle({ token }: { token: string }) {
 	)
 }
 
+// Журнал случаев, когда бот передал беседу оператору (бренд не на сайте,
+// брак/возврат, «не то, что искал», исчерпал ходы и т.п.) — чтобы видеть,
+// на чём бот спотыкается, и точечно поправить промпт/список брендов.
+// Источник — adminOnly-системные сообщения в messages (см. AI_HANDOFF_PREFIX),
+// отдельной таблицы под это нет
+function AiHandoffLog({ token }: { token: string }) {
+	const [items, setItems] = useState<AiHandoff[] | null>(null)
+	const [loadFailed, setLoadFailed] = useState(false)
+
+	useEffect(() => {
+		fetchAiHandoffs(token)
+			.then(setItems)
+			.catch(() => setLoadFailed(true))
+	}, [token])
+
+	return (
+		<div className="mb-5 border-b border-zinc-200 pb-5 dark:border-zinc-800">
+			<h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+				<Bot aria-hidden="true" className="h-4 w-4" />
+				Передачи ИИ оператору
+			</h3>
+			{loadFailed ? (
+				<p className="text-sm text-red-600 dark:text-red-400">Не удалось загрузить журнал.</p>
+			) : items === null ? (
+				<p className="text-sm text-zinc-500 dark:text-zinc-400">Загрузка…</p>
+			) : items.length === 0 ? (
+				<p className="text-sm text-zinc-500 dark:text-zinc-400">
+					Пока ни одной передачи — хороший знак.
+				</p>
+			) : (
+				<ul className="m-0 flex max-h-64 list-none flex-col gap-1.5 overflow-y-auto p-0">
+					{items.map((h, i) => (
+						<li
+							key={`${h.conversationId}-${i}`}
+							className="rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
+						>
+							<div className="flex items-center justify-between gap-2">
+								<span className="font-medium text-zinc-900 dark:text-zinc-100">
+									Беседа #{h.conversationId}
+								</span>
+								<span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
+									{formatListTime(h.createdAt)}
+								</span>
+							</div>
+							<p className="mt-0.5 text-zinc-600 dark:text-zinc-400">{h.reason}</p>
+						</li>
+					))}
+				</ul>
+			)}
+		</div>
+	)
+}
+
 export function BotResponsesSettings({ token }: { token: string }) {
 	const [items, setItems] = useState<BotResponse[]>([])
 	const [loading, setLoading] = useState(true)
@@ -162,6 +218,7 @@ export function BotResponsesSettings({ token }: { token: string }) {
 	return (
 		<div className="px-4 py-4 md:px-6">
 			<AiBotToggle token={token} />
+			<AiHandoffLog token={token} />
 
 			{loadFailed && (
 				<div

@@ -1,5 +1,6 @@
 import {
 	BarChart3,
+	Bot,
 	ChevronLeft,
 	ChevronRight,
 	CircleAlert,
@@ -57,6 +58,7 @@ function conversationStub(id: number): Conversation {
 		visitorLastReadAt: null,
 		assigneeId: null,
 		assigneeEmail: null,
+		aiHandedOff: false,
 		lastMessageText: null,
 		lastMessageSender: null,
 		lastMessageHasAttachment: false,
@@ -685,6 +687,15 @@ export function ConversationList({
 														aria-label="Закрыта"
 														className="h-3.5 w-3.5 shrink-0 text-zinc-400"
 													/>
+												)}
+												{c.aiHandedOff && c.status === 'open' && !c.assigneeId && (
+													<span
+														title="ИИ передал эту беседу оператору — нужно вмешаться"
+														className="flex shrink-0 items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-500/15 dark:text-red-400"
+													>
+														<Bot aria-hidden="true" className="h-3 w-3" />
+														ИИ
+													</span>
 												)}
 											</span>
 											{c.lastMessageAt && (
