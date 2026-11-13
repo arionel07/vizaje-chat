@@ -1004,7 +1004,9 @@ export function ChatWindow({
 												? 'rounded-br-md border border-red-500 text-red-600 dark:text-red-400'
 												: mine
 													? 'rounded-br-md bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-													: 'rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100'
+													: m.sender === 'bot'
+														? 'rounded-bl-md bg-violet-50 text-violet-950 dark:bg-violet-500/15 dark:text-violet-100'
+														: 'rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100'
 										}`}
 									>
 										{m.replyTo && (
@@ -1097,7 +1099,7 @@ export function ChatWindow({
 									}`}
 								>
 									{m.sender === 'bot' && (
-										<span className="flex items-center gap-0.5">
+										<span className="flex items-center gap-0.5 text-violet-500 dark:text-violet-400">
 											<Bot aria-hidden="true" className="h-3 w-3 shrink-0" />
 											Отвечает ИИ ·
 										</span>
