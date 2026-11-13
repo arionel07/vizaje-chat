@@ -1,0 +1,7 @@
+.git
+node_modules
+vizaje-chat-api/node_modules
+vizaje-chat-admin/node_modules
+vizaje-chat-admin/dist
+.env
+deploy/certs

@@ -1,12 +1,24 @@
 const API_URL = 'http://localhost:3001'
 const WS_URL = 'ws://localhost:3001/ws'
 
+// учётные данные админа (созданного через create-admin.ts) — из окружения, не из кода:
+//   ADMIN_EMAIL=... ADMIN_PASSWORD=... bun run src/scripts/test-realtime.ts
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+	console.error('Set ADMIN_EMAIL and ADMIN_PASSWORD env variables')
+	process.exit(1)
+}
+
 async function main() {
 	// 1. Создаём widget-сессию (посетитель)
 	const sessionRes = await fetch(`${API_URL}/widget/session`, {
 		method: 'POST'
 	})
-	const { token: visitorToken, conversationId } = await sessionRes.json()
+	const { token: visitorToken, conversationId } = (await sessionRes.json()) as {
+		token: string
+		conversationId: number
+	}
 	console.log('✅ visitor session created, conversationId:', conversationId)
 
 	// 2. Логинимся как админ
@@ -14,11 +26,13 @@ async function main() {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
-			email: 'arionel@vizaje-nica.com',
-			password: 'твой_пароль182006'
+			email: ADMIN_EMAIL,
+			password: ADMIN_PASSWORD
 		})
 	})
-	const { token: adminToken } = await loginRes.json()
+	const { token: adminToken } = (await loginRes.json()) as {
+		token: string
+	}
 	console.log('✅ admin logged in')
 
 	// 3. Коннектим оба сокета

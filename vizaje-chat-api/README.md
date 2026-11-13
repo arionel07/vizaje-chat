@@ -1,15 +1,12 @@
-# vizaje-chat
+# vizaje-chat-api
 
-To install dependencies:
+API и WebSocket-сервер support-чата (Bun + Elysia + Postgres/Drizzle).
+
+Запуск, переменные окружения и структура монорепо описаны в [корневом README](../README.md). Шаблон переменных: [`.env.example`](.env.example).
 
 ```bash
 bun install
+cp .env.example .env
+bunx drizzle-kit push
+bun run src/index.ts
 ```
-
-To run:
-
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
