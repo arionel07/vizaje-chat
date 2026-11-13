@@ -42,6 +42,11 @@ const RESPOND_TOOL: ToolDef = {
 			type: 'object',
 			properties: {
 				reply: { type: 'string', description: 'Текст ответа посетителю' },
+				lang: {
+					type: 'string',
+					enum: ['ru', 'ro'],
+					description: 'Язык, на котором написан reply — тот же язык, что в последнем сообщении посетителя'
+				},
 				actions: {
 					type: 'array',
 					description:
@@ -62,7 +67,7 @@ const RESPOND_TOOL: ToolDef = {
 					}
 				}
 			},
-			required: ['reply', 'actions'],
+			required: ['reply', 'lang', 'actions'],
 			additionalProperties: false
 		}
 	}
@@ -70,7 +75,7 @@ const RESPOND_TOOL: ToolDef = {
 
 const TOOLS = [...SEARCH_AND_HANDOFF_TOOLS, RESPOND_TOOL]
 
-const SYSTEM_PROMPT = (langName: string) => `Ты — вежливый ассистент поддержки интернет-магазина парфюмерии и косметики vizaje-nica.com. Отвечай ТОЛЬКО на языке: ${langName} — не переключайся на другой язык, даже если посетитель пишет на нём.
+const SYSTEM_PROMPT = (langName: string) => `Ты — вежливый ассистент поддержки интернет-магазина парфюмерии и косметики vizaje-nica.com. Отвечай на том языке, на котором посетитель написал своё ПОСЛЕДНЕЕ сообщение (русский или румынский) — определяй это сам по тексту, а не по тому, на каком языке сайт. Если по сообщению язык определить невозможно (оно слишком короткое, эмодзи, нет текста) — используй язык по умолчанию: ${langName}. Посетитель может в любой момент переключиться на другой язык — тогда переключись вместе с ним, без вопросов «на каком языке отвечать».
 
 Правила:
 1. Если речь о конкретном товаре/бренде (наличие, цена, варианты) — ВСЕГДА сначала вызови search_product. Никогда не отвечай по памяти о наличии или ассортименте.
@@ -83,18 +88,23 @@ const SYSTEM_PROMPT = (langName: string) => `Ты — вежливый асси�
 8. Если посетитель говорит, что твой ответ/найденный товар — не то, что он искал (например «нет, не то», «это не тот товар», «не подходит») — не гадай со второй попытки: извинись, что не угадал, и вызови handoff_to_operator с кратким описанием, что именно искал посетитель и чем твой ответ не подошёл.
 9. Перед вызовом handoff_to_operator ВСЕГДА сначала скажи что-то тёплое и по делу в reply этого же хода — handoff не заменяет ответ, а дополняет его. Человек должен почувствовать, что его услышали, а не что его резко переключили.
 10. Там, где уместно, заканчивай ответ коротким уточняющим вопросом — не обрывай разговор голым фактом.
-11. Отвечай коротко и по-дружески, без канцелярита. Финальный ответ — только через respond_to_visitor.`
+11. Отвечай коротко и по-дружески, без канцелярита. Финальный ответ — только через respond_to_visitor, и в поле lang каждый раз честно укажи, на каком языке реально написан reply.`
 
 export type BotReply = { text: string; actions: MessageAction[] }
+// внутренний вариант с языком, который модель реально использовала для reply —
+// нужен только внутри этого файла (appendScheduleNoteIfOffline), наружу
+// (ws.routes.ts) язык ответа не нужен
+type ParsedReply = BotReply & { lang: 'ru' | 'ro' }
 
 const MAX_TOOL_ITERATIONS = 4
 
 type ToolCall = { id: string; function: { name: string; arguments: string } }
 
-function parseRespondArgs(raw: string): BotReply | null {
+function parseRespondArgs(raw: string): ParsedReply | null {
 	try {
-		const parsed = JSON.parse(raw) as { reply?: unknown; actions?: unknown }
+		const parsed = JSON.parse(raw) as { reply?: unknown; lang?: unknown; actions?: unknown }
 		if (typeof parsed.reply !== 'string') return null
+		const lang = parsed.lang === 'ro' ? 'ro' : 'ru'
 		const actions = Array.isArray(parsed.actions)
 			? parsed.actions.filter(
 					(a): a is MessageAction =>
@@ -104,7 +114,7 @@ function parseRespondArgs(raw: string): BotReply | null {
 						typeof a.value === 'string'
 				)
 			: []
-		return { text: parsed.reply, actions }
+		return { text: parsed.reply, lang, actions }
 	} catch {
 		return null
 	}
@@ -150,7 +160,7 @@ export async function generateBotReply(
 			const calls = (message.tool_calls ?? []) as ToolCall[]
 			if (calls.length === 0) break // модель не вызвала ни одной функции — нечего отдать
 
-			let finalReply: BotReply | null = null
+			let finalReply: ParsedReply | null = null
 			let handedOff = false
 			for (const call of calls) {
 				const args = JSON.parse(call.function.arguments || '{}') as Record<string, unknown>
@@ -165,8 +175,12 @@ export async function generateBotReply(
 			}
 			if (finalReply) {
 				// передача оператору вне рабочего графика — честно дописываем, когда
-				// реально ответят, не полагаясь на то, что модель сама это учла
-				if (handedOff) finalReply.text = await appendScheduleNoteIfOffline(finalReply.text, lang)
+				// реально ответят, не полагаясь на то, что модель сама это учла.
+				// Язык — тот, что реально использовала модель в reply, а не
+				// language виджета по умолчанию (посетитель мог писать на другом)
+				if (handedOff) {
+					finalReply.text = await appendScheduleNoteIfOffline(finalReply.text, finalReply.lang)
+				}
 				return finalReply
 			}
 		}

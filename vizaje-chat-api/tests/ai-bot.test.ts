@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { findRestrictedBrand } from '../src/ai-bot/restricted-brands'
 import { generateBotReply } from '../src/ai-bot/service'
+import { DAY_KEYS, DEFAULT_SCHEDULE, setSchedule } from '../src/settings/service'
 import { conversations, messages } from '../src/db/schema'
 import { db } from '../src/db/client'
 import { setDeepseekConfig, setDeepseekFetcher } from '../src/ai-bot/deepseek'
@@ -81,6 +82,39 @@ describe('findRestrictedBrand', () => {
 
 	test('обычный товар — не найден', () => {
 		expect(findRestrictedBrand('биотерм крем')).toBeNull()
+	})
+})
+
+describe('generateBotReply — язык ответа определяется моделью, не виджетом', () => {
+	test('виджет передал ru, модель ответила на ro (lang в respond_to_visitor) → заметка о графике тоже на ro', async () => {
+		// график офлайн прямо сейчас, но с реальным следующим окном (не выключен целиком) —
+		// иначе appendScheduleNoteIfOffline не добавит заметку вообще (nextOnlineAt будет null)
+		await setSchedule({
+			days: Object.fromEntries(DAY_KEYS.map(k => [k, { enabled: true, start: '03:00', end: '03:01' }]))
+		})
+		try {
+			const v = await makeVisitor()
+			setDeepseekFetcher(
+				scriptedModel([
+					{
+						toolCalls: [
+							{ name: 'handoff_to_operator', args: { reasonSummary: 'тест языка' } },
+							{
+								name: 'respond_to_visitor',
+								args: { reply: 'Vă conectez cu un operator.', lang: 'ro', actions: [] }
+							}
+						]
+					}
+				])
+			)
+			// явно передаём виджетный дефолт 'ru' — модель должна его переопределить своим lang: 'ro'
+			const reply = await generateBotReply(v.conversationId, 'un mesaj in romana', 'ru')
+			expect(reply?.text).toContain('Vă conectez')
+			expect(reply?.text).toContain('echipa este offline')
+			expect(reply?.text).not.toContain('команда не онлайн')
+		} finally {
+			await setSchedule(DEFAULT_SCHEDULE)
+		}
 	})
 })
 
